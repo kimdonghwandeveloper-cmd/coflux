@@ -57,8 +57,8 @@ export const Canvas = ({
   return (
     <div style={{ flex: 1, overflowY: 'auto', position: 'relative' }}>
       
-      {/* Network Debug Bar (Floating Bottom Left) */}
-      <div style={{ position: 'fixed', bottom: 16, left: 24, zIndex: 10 }}>
+      {/* Network Debug Bar (Floating Bottom Right) */}
+      <div style={{ position: 'fixed', bottom: 24, right: 24, zIndex: 10 }}>
         <button 
           className="notion-btn" 
           onClick={() => setShowNetwork(!showNetwork)}
@@ -67,7 +67,7 @@ export const Canvas = ({
           <Wifi size={16} color={connState === 'Connected!' ? 'var(--success)' : 'var(--text-secondary)'} />
         </button>
         {showNetwork && (
-          <div style={{ position: 'absolute', bottom: '44px', left: 0, background: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '8px', padding: '12px', boxShadow: '0 4px 12px rgba(0,0,0,0.1)', width: '240px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+          <div style={{ position: 'absolute', bottom: '44px', right: 0, background: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '8px', padding: '12px', boxShadow: '0 4px 12px rgba(0,0,0,0.1)', width: '240px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
             <div style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)' }}>Status: {connState}</div>
             <button className="notion-btn" onClick={handleGenerateOffer} style={{ fontSize: '11px', padding: '4px' }}>1. Generate Offer</button>
             <button className="notion-btn" onClick={handleAcceptOffer} style={{ fontSize: '11px', padding: '4px' }}>2. Accept Offer</button>

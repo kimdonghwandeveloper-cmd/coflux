@@ -37,6 +37,11 @@ function App() {
           pages={pages}
           activePageId={activePageId}
           setActivePageId={setActivePageId}
+          onAddPage={() => {
+            const newId = Date.now().toString();
+            setPages([...pages, { id: newId, title: 'Untitled', icon: '📄', updatedAt: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) }]);
+            setActivePageId(newId);
+          }}
         />
       )}
 

@@ -6,13 +6,15 @@ export const Sidebar = ({
   toggleTheme, 
   pages,
   activePageId,
-  setActivePageId
+  setActivePageId,
+  onAddPage
 }: { 
   theme: string, 
   toggleTheme: () => void,
   pages: PageData[],
   activePageId: string,
-  setActivePageId: (id: string) => void
+  setActivePageId: (id: string) => void,
+  onAddPage: () => void
 }) => {
   return (
     <div className="sidebar" style={{ paddingTop: '16px' }}>
@@ -36,7 +38,9 @@ export const Sidebar = ({
         <div style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
           Pages
         </div>
-        <Plus size={16} color="var(--text-secondary)" style={{ cursor: 'pointer' }} />
+        <div onClick={onAddPage} style={{ cursor: 'pointer', padding: '2px', display: 'flex' }}>
+          <Plus size={16} color="var(--text-secondary)" />
+        </div>
       </div>
       
       <div style={{ flex: 1, overflowY: 'auto' }}>
