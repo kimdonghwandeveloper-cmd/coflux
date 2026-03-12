@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { Plus, Settings, Moon, Sun, MoreHorizontal, Star, Trash2, ChevronDown } from 'lucide-react';
+import { Plus, Settings, Moon, Sun, MoreHorizontal, Star, Trash2, ChevronDown, ChevronRight } from 'lucide-react';
 import { PageData, WorkspaceData } from '../App';
 
 export const Sidebar = ({ 
@@ -30,6 +30,7 @@ export const Sidebar = ({
   onDeletePage: (id: string) => void
 }) => {
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
   const [showWsDropdown, setShowWsDropdown] = useState(false);
   const [newWsName, setNewWsName] = useState('');
   const menuRef = useRef<HTMLDivElement>(null);
@@ -44,68 +45,80 @@ export const Sidebar = ({
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
+  const toggleExpand = (id: string) => {
+    setExpandedIds(prev => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  };
+
   const activeWs = workspaces.find(w => w.id === activeWorkspaceId);
+  const getChildren = (parentId: string) => pages.filter(p => p.parentId === parentId);
+  const hasChildren = (parentId: string) => pages.some(p => p.parentId === parentId);
   
-  // Only show root-level pages in sidebar (sub-pages are inside their parent page)
-  const rootPages = pages.filter(p => !p.parentId);
-  const favoritePages = rootPages.filter(p => p.isFavorite);
-  const privatePages = rootPages.filter(p => !p.isFavorite);
+  const favoriteRoots = pages.filter(p => p.isFavorite && !p.parentId);
+  const privateRoots = pages.filter(p => !p.isFavorite && !p.parentId);
 
-  const renderPageItem = (page: PageData) => (
-    <div 
-      key={page.id} 
-      className={`sidebar-item ${activePageId === page.id ? 'active' : ''}`}
-      onClick={() => setActivePageId(page.id)}
-      style={{ position: 'relative', display: 'flex', justifyContent: 'space-between', paddingRight: '4px' }}
-    >
-      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', overflow: 'hidden' }}>
-        <span style={{ fontSize: '16px' }}>{page.icon}</span>
-        <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{page.title}</span>
-      </div>
-      
-      <div 
-        className="sidebar-item-actions"
-        onClick={(e) => { e.stopPropagation(); setOpenMenuId(openMenuId === page.id ? null : page.id); }}
-        style={{ padding: '2px', borderRadius: '4px', cursor: 'pointer', display: 'flex', flexShrink: 0 }}
-      >
-        <MoreHorizontal size={16} color="var(--text-secondary)" />
-      </div>
+  const renderPageItem = (page: PageData, depth: number = 0) => {
+    const children = getChildren(page.id);
+    const isExpanded = expandedIds.has(page.id);
 
-      {openMenuId === page.id && (
+    return (
+      <div key={page.id}>
         <div 
-          ref={menuRef}
-          style={{ position: 'absolute', top: '28px', right: '8px', background: 'var(--bg-primary)', border: '1px solid var(--border-color)', boxShadow: '0 4px 12px rgba(0,0,0,0.1)', borderRadius: '6px', zIndex: 100, padding: '4px', width: '200px', display: 'flex', flexDirection: 'column', gap: '2px' }}
-          onClick={e => e.stopPropagation()}
+          className={`sidebar-item ${activePageId === page.id ? 'active' : ''}`}
+          onClick={() => setActivePageId(page.id)}
+          style={{ position: 'relative', display: 'flex', justifyContent: 'space-between', paddingRight: '4px', paddingLeft: `${12 + depth * 16}px` }}
         >
-          <div className="sidebar-item" style={{ margin: 0, padding: '6px 8px' }}
-            onClick={(e) => { e.stopPropagation(); onUpdatePage({ ...page, isFavorite: !page.isFavorite }); setOpenMenuId(null); }}>
-            <Star size={14} fill={page.isFavorite ? 'currentColor' : 'none'} color={page.isFavorite ? 'var(--accent)' : 'var(--text-secondary)'} />
-            <span style={{ fontSize: '13px' }}>{page.isFavorite ? 'Remove from Favorites' : 'Add to Favorites'}</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '4px', overflow: 'hidden' }}>
+            {hasChildren(page.id) ? (
+              <div onClick={(e) => { e.stopPropagation(); toggleExpand(page.id); }} style={{ cursor: 'pointer', display: 'flex', padding: '2px' }}>
+                {isExpanded ? <ChevronDown size={14} color="var(--text-secondary)" /> : <ChevronRight size={14} color="var(--text-secondary)" />}
+              </div>
+            ) : (
+              <div style={{ width: '18px' }} />
+            )}
+            <span style={{ fontSize: '16px' }}>{page.icon}</span>
+            <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{page.title}</span>
           </div>
           
-          <div style={{ height: '1px', background: 'var(--border-color)', margin: '4px 0' }} />
-
-          <div className="sidebar-item" style={{ margin: 0, padding: '6px 8px', color: 'var(--error)' }}
-            onClick={(e) => { e.stopPropagation(); onDeletePage(page.id); setOpenMenuId(null); }}>
-            <Trash2 size={14} />
-            <span style={{ fontSize: '13px' }}>Delete</span>
+          <div className="sidebar-item-actions"
+            onClick={(e) => { e.stopPropagation(); setOpenMenuId(openMenuId === page.id ? null : page.id); }}
+            style={{ padding: '2px', borderRadius: '4px', cursor: 'pointer', display: 'flex', flexShrink: 0 }}>
+            <MoreHorizontal size={16} color="var(--text-secondary)" />
           </div>
+
+          {openMenuId === page.id && (
+            <div ref={menuRef}
+              style={{ position: 'absolute', top: '28px', right: '8px', background: 'var(--bg-primary)', border: '1px solid var(--border-color)', boxShadow: '0 4px 12px rgba(0,0,0,0.1)', borderRadius: '6px', zIndex: 100, padding: '4px', width: '200px', display: 'flex', flexDirection: 'column', gap: '2px' }}
+              onClick={e => e.stopPropagation()}>
+              <div className="sidebar-item" style={{ margin: 0, padding: '6px 8px' }}
+                onClick={(e) => { e.stopPropagation(); onUpdatePage({ ...page, isFavorite: !page.isFavorite }); setOpenMenuId(null); }}>
+                <Star size={14} fill={page.isFavorite ? 'currentColor' : 'none'} color={page.isFavorite ? 'var(--accent)' : 'var(--text-secondary)'} />
+                <span style={{ fontSize: '13px' }}>{page.isFavorite ? 'Remove from Favorites' : 'Add to Favorites'}</span>
+              </div>
+              <div style={{ height: '1px', background: 'var(--border-color)', margin: '4px 0' }} />
+              <div className="sidebar-item" style={{ margin: 0, padding: '6px 8px', color: 'var(--error)' }}
+                onClick={(e) => { e.stopPropagation(); onDeletePage(page.id); setOpenMenuId(null); }}>
+                <Trash2 size={14} />
+                <span style={{ fontSize: '13px' }}>Delete</span>
+              </div>
+            </div>
+          )}
         </div>
-      )}
-    </div>
-  );
+        {isExpanded && children.map(child => renderPageItem(child, depth + 1))}
+      </div>
+    );
+  };
 
   return (
     <div className="sidebar" style={{ paddingTop: '16px' }}>
       {/* Workspace Selector */}
       <div style={{ padding: '0 16px 24px', position: 'relative' }} ref={wsRef}>
-        <div 
-          style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer', padding: '4px 0' }}
-          onClick={() => setShowWsDropdown(!showWsDropdown)}
-        >
-          <div style={{ width: '28px', height: '28px', borderRadius: '6px', backgroundColor: '#000', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: '14px' }}>
-            {activeWs?.icon || 'M'}
-          </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer', padding: '4px 0' }}
+          onClick={() => setShowWsDropdown(!showWsDropdown)}>
+          <div style={{ width: '28px', height: '28px', borderRadius: '6px', backgroundColor: '#000', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: '14px' }}>{activeWs?.icon || 'M'}</div>
           <div style={{ fontSize: '15px', fontWeight: 600, flex: 1 }}>{activeWs?.name || 'My Workspace'}</div>
           <ChevronDown size={14} color="var(--text-secondary)" />
         </div>
@@ -136,10 +149,10 @@ export const Sidebar = ({
       </div>
 
       <div style={{ flex: 1, overflowY: 'auto' }}>
-        {favoritePages.length > 0 && (
+        {favoriteRoots.length > 0 && (
           <div style={{ marginBottom: '16px' }}>
             <div style={{ padding: '0 16px 8px', fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Favorites</div>
-            {favoritePages.map(renderPageItem)}
+            {favoriteRoots.map(p => renderPageItem(p, 0))}
           </div>
         )}
 
@@ -150,7 +163,7 @@ export const Sidebar = ({
               <Plus size={16} color="var(--text-secondary)" />
             </div>
           </div>
-          {privatePages.map(renderPageItem)}
+          {privateRoots.map(p => renderPageItem(p, 0))}
         </div>
       </div>
 
