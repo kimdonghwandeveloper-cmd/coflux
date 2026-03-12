@@ -68,7 +68,11 @@ const CollaborativeEditor = ({ provider, currentTheme, onAddSubPage, pageId }: {
   }, [provider]);
 
   const getCustomSlashMenuItems = useCallback((ed: any) => {
-    const defaults = getDefaultReactSlashMenuItems(ed);
+    // Filter out Heading 4, 5, 6 as they are redundant for this app
+    const defaults = getDefaultReactSlashMenuItems(ed).filter(
+      item => !["Heading 4", "Heading 5", "Heading 6"].includes(item.title)
+    );
+    
     const pageItem = {
       title: "Page",
       onItemClick: () => { onAddSubPage(); },
