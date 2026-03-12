@@ -12,6 +12,7 @@ export interface PageData {
   icon: string;
   updatedAt: string;
   coverImage?: string | null;
+  isFavorite?: boolean | null;
 }
 
 function App() {
@@ -29,7 +30,7 @@ function App() {
         const loadedPages: PageData[] = await invoke('get_pages');
         if (loadedPages.length === 0) {
           // Initialize default workspace if empty
-          const defaultPage = { id: '1', title: 'Getting Started', icon: '🚀', updatedAt: new Date().toLocaleDateString(), coverImage: null };
+          const defaultPage = { id: '1', title: 'Getting Started', icon: '🚀', updatedAt: new Date().toLocaleDateString(), coverImage: null, isFavorite: false };
           await invoke('save_page', { page: defaultPage });
           setPages([defaultPage]);
           setActivePageId('1');
@@ -40,7 +41,7 @@ function App() {
       } catch (e) {
         console.error("Failed to load pages from DB:", e);
         // Fallback so the app doesn't white-screen if the DB fails
-        setPages([{ id: '1', title: 'Error Loading DB', icon: '⚠️', updatedAt: new Date().toLocaleDateString(), coverImage: null }]);
+        setPages([{ id: '1', title: 'Error Loading DB', icon: '⚠️', updatedAt: new Date().toLocaleDateString(), coverImage: null, isFavorite: false }]);
         setActivePageId('1');
       }
     }
@@ -62,11 +63,25 @@ function App() {
           setActivePageId={setActivePageId}
           onAddPage={async () => {
             const newId = Date.now().toString();
-            const newPage = { id: newId, title: 'Untitled', icon: '📄', updatedAt: new Date().toLocaleDateString(), coverImage: null };
+            const newPage = { id: newId, title: 'Untitled', icon: '📄', updatedAt: new Date().toLocaleDateString(), coverImage: null, isFavorite: false };
             try {
               await invoke('save_page', { page: newPage });
               setPages([...pages, newPage]);
               setActivePageId(newId);
+            } catch (e) { console.error(e); }
+          }}
+          onUpdatePage={async (updated: PageData) => {
+            try {
+              await invoke('save_page', { page: updated });
+              setPages(pages.map(p => p.id === updated.id ? updated : p));
+            } catch (e) { console.error(e); }
+          }}
+          onDeletePage={async (id: string) => {
+            try {
+              await invoke('delete_page', { pageId: id });
+              const newPages = pages.filter(p => p.id !== id);
+              setPages(newPages);
+              if (activePageId === id && newPages.length > 0) setActivePageId(newPages[0].id);
             } catch (e) { console.error(e); }
           }}
         />
@@ -123,14 +138,6 @@ function App() {
               try {
                 await invoke('save_page', { page: updated });
                 setPages(pages.map(p => p.id === updated.id ? updated : p));
-              } catch (e) { console.error(e); }
-            }}
-            onDeletePage={async (id: string) => {
-              try {
-                await invoke('delete_page', { pageId: id });
-                const newPages = pages.filter(p => p.id !== id);
-                setPages(newPages);
-                if (activePageId === id && newPages.length > 0) setActivePageId(newPages[0].id);
               } catch (e) { console.error(e); }
             }}
           />

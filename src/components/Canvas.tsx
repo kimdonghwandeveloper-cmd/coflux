@@ -5,7 +5,7 @@ import { BlockNoteView } from "@blocknote/mantine";
 import { useCreateBlockNote } from "@blocknote/react";
 import "@blocknote/mantine/style.css";
 import { PageData } from '../App';
-import { Trash2, Image as ImageIcon, Wifi } from 'lucide-react';
+import { Image as ImageIcon, Wifi } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import * as Y from 'yjs';
 import { Awareness } from 'y-protocols/awareness';
@@ -29,13 +29,11 @@ const CollaborativeEditor = ({ provider, currentTheme }: { provider: any, curren
 export const Canvas = ({ 
   currentTheme, 
   activePage, 
-  onUpdatePage, 
-  onDeletePage 
+  onUpdatePage 
 }: { 
   currentTheme: 'light' | 'dark',
   activePage: PageData,
-  onUpdatePage: (p: PageData) => void,
-  onDeletePage: (id: string) => void
+  onUpdatePage: (p: PageData) => void
 }) => {
   const [offer, setOffer] = useState('');
   const [connState, setConnState] = useState('Disconnected');
@@ -310,18 +308,7 @@ export const Canvas = ({
            Updated {activePage.updatedAt}
         </div>
         
-        <div style={{ 
-          display: 'flex', 
-          alignItems: 'center', 
-          marginBottom: '24px', 
-          borderBottom: '1px solid var(--border-color)', 
-          paddingBottom: '12px',
-          gap: '16px'
-        }}>
-          <button className="notion-btn" onClick={() => onDeletePage(activePage.id)} style={{ border: 'none', background: 'transparent', color: 'var(--error)', padding: '4px 0' }}>
-            <Trash2 size={16} /> Delete Page
-          </button>
-        </div>
+
 
         <div style={{ marginLeft: '-50px', flex: 1, display: 'flex', flexDirection: 'column' }}>
           {provider ? <CollaborativeEditor provider={provider} currentTheme={currentTheme} /> : <div>Loading page data...</div>}

@@ -126,6 +126,20 @@ html[data-theme='dark'] .sidebar-item.active {
   background: rgba(255, 255, 255, 0.1);
 }
 
+/* Hide ... button by default, show on hover */
+.sidebar-item .sidebar-item-actions {
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.sidebar-item:hover .sidebar-item-actions {
+  opacity: 1;
+}
+
+.sidebar-item-actions:hover {
+  background: var(--border-color);
+}
+
 .top-bar {
   display: flex;
   align-items: center;
