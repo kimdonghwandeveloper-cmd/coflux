@@ -6,6 +6,22 @@ import { useCreateBlockNote } from "@blocknote/react";
 import "@blocknote/mantine/style.css";
 import { PageData } from '../App';
 import { Trash2, Image as ImageIcon, Wifi } from 'lucide-react';
+import { invoke } from '@tauri-apps/api/core';
+import * as Y from 'yjs';
+import { Awareness } from 'y-protocols/awareness';
+
+// Sub-component wrapper because `useCreateBlockNote` hook depends on provider
+const CollaborativeEditor = ({ provider, currentTheme }: { provider: any, currentTheme: 'light' | 'dark' }) => {
+  const editor = useCreateBlockNote({
+    collaboration: {
+      provider,
+      fragment: provider.doc.getXmlFragment("blocknote"),
+      user: { name: "Coflux User", color: "#2e2e2e" }
+    }
+  });
+
+  return <BlockNoteView editor={editor} theme={currentTheme} />;
+};
 
 export const Canvas = ({ 
   currentTheme, 
@@ -22,21 +38,94 @@ export const Canvas = ({
   const [connState, setConnState] = useState('Disconnected');
   const [copied, setCopied] = useState(false);
   const [showNetwork, setShowNetwork] = useState(false);
+  
+  const [provider, setProvider] = useState<any>(null);
 
-  // Initialize BlockNote Core
-  const editor = useCreateBlockNote();
+  // Initialize Y.Doc directly from SQLite Rust Database (Local Persistence)
+  useEffect(() => {
+    let ydoc: Y.Doc;
+    
+    const initYjs = async () => {
+      ydoc = new Y.Doc();
+      
+      try {
+        const updates: number[][] = await invoke('get_yjs_updates', { pageId: activePage.id });
+        ydoc.transact(() => {
+          updates.forEach(u => {
+            Y.applyUpdate(ydoc, new Uint8Array(u));
+          });
+        });
+      } catch (e) { console.error("Failed to load yjs updates", e); }
+
+      // Hook up local writes
+      ydoc.on('update', async (update: Uint8Array, origin: any) => {
+        try {
+          // Save locally
+          await invoke('save_yjs_update', { pageId: activePage.id, updateBlob: Array.from(update) });
+          // If we are actively editing, broadcast remote sync
+          if (origin !== 'remote') {
+            const base64Str = btoa(String.fromCharCode.apply(null, Array.from(update)));
+            webrtcClient.sendMessage(`crdt|${activePage.id}|${base64Str}`).catch(() => {});
+          }
+        } catch (e) { console.error("Update Hook Error:", e); }
+      });
+
+      const awareness = new Awareness(ydoc);
+      // Construct a minimal provider interface expected by y-prosemirror / blocknote
+      setProvider({
+        doc: ydoc,
+        awareness,
+        on: () => {},
+        off: () => {}
+      });
+    };
+
+    setProvider(null);
+    initYjs();
+
+    return () => {
+      if (ydoc) ydoc.destroy();
+    };
+  }, [activePage.id]);
 
   // Handle WebRTC listeners
   useEffect(() => {
     let unlistenOpen: UnlistenFn;
+    let unlistenMsg: UnlistenFn;
+
     const setupListeners = async () => {
       unlistenOpen = await listen('webrtc-open', () => {
         setConnState('Connected!');
       });
+
+      unlistenMsg = await listen<string>('webrtc-msg', (event) => {
+        const text = event.payload;
+        if (text.startsWith('crdt|')) {
+           const parts = text.split('|');
+           const pageId = parts[1];
+           const base64Str = parts[2];
+           // If the payload matches current page, apply Yjs CRDT
+           if (pageId === activePage.id && provider?.doc) {
+               try {
+                  const binaryStr = atob(base64Str);
+                  const len = binaryStr.length;
+                  const bytes = new Uint8Array(len);
+                  for (let i = 0; i < len; i++) {
+                     bytes[i] = binaryStr.charCodeAt(i);
+                  }
+                  Y.applyUpdate(provider.doc, bytes, 'remote');
+               } catch(e) { console.error("CRDT Merge Failed:", e); }
+           }
+        }
+      });
     };
     setupListeners();
-    return () => { if (unlistenOpen) unlistenOpen(); };
-  }, []);
+
+    return () => { 
+      if (unlistenOpen) unlistenOpen(); 
+      if (unlistenMsg) unlistenMsg();
+    };
+  }, [activePage.id, provider]);
 
   const handleGenerateOffer = async () => {
     const sdp = await webrtcClient.generateOffer();
@@ -119,7 +208,7 @@ export const Canvas = ({
         </div>
 
         <div style={{ marginLeft: '-50px' }}>
-          <BlockNoteView editor={editor} theme={currentTheme} />
+          {provider ? <CollaborativeEditor provider={provider} currentTheme={currentTheme} /> : <div>Loading page data...</div>}
         </div>
       </div>
     </div>

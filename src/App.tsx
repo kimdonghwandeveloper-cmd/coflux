@@ -4,6 +4,7 @@ import { Canvas } from './components/Canvas';
 import { Sidebar } from './components/Sidebar';
 import { Menu, Search, Users, Bell, Sparkles } from 'lucide-react';
 import { AiChatWidget } from './components/AiChatWidget';
+import { invoke } from '@tauri-apps/api/core';
 
 export interface PageData {
   id: string;
@@ -17,12 +18,33 @@ function App() {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [chatOpen, setChatOpen] = useState(false);
 
-  const [pages, setPages] = useState<PageData[]>([
-    { id: '1', title: 'Getting Started', icon: '🚀', updatedAt: 'Mar 12, 2026' },
-    { id: '2', title: 'Team Meetings', icon: '📅', updatedAt: 'Mar 12, 2026' },
-    { id: '3', title: 'Project Documentation', icon: '📚', updatedAt: 'Mar 12, 2026' },
-  ]);
-  const [activePageId, setActivePageId] = useState('1');
+  const [pages, setPages] = useState<PageData[]>([]);
+  const [activePageId, setActivePageId] = useState<string | null>(null);
+
+  // Load from SQLite DB on mount
+  useEffect(() => {
+    async function loadPages() {
+      try {
+        const loadedPages: PageData[] = await invoke('get_pages');
+        if (loadedPages.length === 0) {
+          // Initialize default workspace if empty
+          const defaultPage = { id: '1', title: 'Getting Started', icon: '🚀', updatedAt: new Date().toLocaleDateString() };
+          await invoke('save_page', { page: defaultPage });
+          setPages([defaultPage]);
+          setActivePageId('1');
+        } else {
+          setPages(loadedPages);
+          setActivePageId(loadedPages[0].id);
+        }
+      } catch (e) {
+        console.error("Failed to load pages from DB:", e);
+        // Fallback so the app doesn't white-screen if the DB fails
+        setPages([{ id: '1', title: 'Error Loading DB', icon: '⚠️', updatedAt: new Date().toLocaleDateString() }]);
+        setActivePageId('1');
+      }
+    }
+    loadPages();
+  }, []);
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
@@ -30,17 +52,21 @@ function App() {
 
   return (
     <div className="app-container">
-      {sidebarOpen && (
+      {sidebarOpen && activePageId && (
         <Sidebar 
           theme={theme} 
           toggleTheme={() => setTheme(t => t === 'light' ? 'dark' : 'light')} 
           pages={pages}
           activePageId={activePageId}
           setActivePageId={setActivePageId}
-          onAddPage={() => {
+          onAddPage={async () => {
             const newId = Date.now().toString();
-            setPages([...pages, { id: newId, title: 'Untitled', icon: '📄', updatedAt: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) }]);
-            setActivePageId(newId);
+            const newPage = { id: newId, title: 'Untitled', icon: '📄', updatedAt: new Date().toLocaleDateString() };
+            try {
+              await invoke('save_page', { page: newPage });
+              setPages([...pages, newPage]);
+              setActivePageId(newId);
+            } catch (e) { console.error(e); }
           }}
         />
       )}
@@ -88,18 +114,26 @@ function App() {
           </div>
         )}
 
-        <Canvas 
-          currentTheme={theme} 
-          activePage={pages.find(p => p.id === activePageId) || pages[0]}
-          onUpdatePage={(updated: PageData) => {
-            setPages(pages.map(p => p.id === updated.id ? updated : p));
-          }}
-          onDeletePage={(id: string) => {
-            const newPages = pages.filter(p => p.id !== id);
-            setPages(newPages);
-            if (activePageId === id && newPages.length > 0) setActivePageId(newPages[0].id);
-          }}
-        />
+        {activePageId && pages.length > 0 && (
+          <Canvas 
+            currentTheme={theme} 
+            activePage={pages.find(p => p.id === activePageId) || pages[0]}
+            onUpdatePage={async (updated: PageData) => {
+              try {
+                await invoke('save_page', { page: updated });
+                setPages(pages.map(p => p.id === updated.id ? updated : p));
+              } catch (e) { console.error(e); }
+            }}
+            onDeletePage={async (id: string) => {
+              try {
+                await invoke('delete_page', { pageId: id });
+                const newPages = pages.filter(p => p.id !== id);
+                setPages(newPages);
+                if (activePageId === id && newPages.length > 0) setActivePageId(newPages[0].id);
+              } catch (e) { console.error(e); }
+            }}
+          />
+        )}
       </div>
     </div>
   );

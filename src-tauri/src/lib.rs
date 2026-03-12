@@ -43,7 +43,11 @@ pub fn run() {
             read_clipboard_sdp,
             webrtc_core::send_message,
             os_hooks::get_user_status,
-            db_core::save_yjs_update
+            db_core::get_pages,
+            db_core::save_page,
+            db_core::delete_page,
+            db_core::save_yjs_update,
+            db_core::get_yjs_updates
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
