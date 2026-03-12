@@ -12,6 +12,7 @@ pub struct PageData {
     pub icon: String,
     pub updated_at: String,
     pub cover_image: Option<String>,
+    pub is_favorite: Option<bool>,
 }
 
 lazy_static! {
@@ -47,13 +48,15 @@ pub fn init_db(app_handle: &tauri::AppHandle) -> Result<()> {
             title TEXT NOT NULL,
             icon TEXT NOT NULL,
             updated_at TEXT NOT NULL,
-            cover_image TEXT
+            cover_image TEXT,
+            is_favorite BOOLEAN
         )",
         [],
     )?;
 
     // Attempt to run a lightweight migration to add the column for older SQLite DBs
     let _ = conn.execute("ALTER TABLE pages ADD COLUMN cover_image TEXT", []);
+    let _ = conn.execute("ALTER TABLE pages ADD COLUMN is_favorite BOOLEAN", []);
 
     // Create a table for AI routing logs
     conn.execute(
@@ -75,7 +78,7 @@ pub fn init_db(app_handle: &tauri::AppHandle) -> Result<()> {
 pub fn get_pages() -> Result<Vec<PageData>, String> {
     if let Some(conn) = DB_CONN.lock().unwrap().as_ref() {
         let mut stmt = conn
-            .prepare("SELECT id, title, icon, updated_at, cover_image FROM pages")
+            .prepare("SELECT id, title, icon, updated_at, cover_image, is_favorite FROM pages")
             .map_err(|e| e.to_string())?;
         let page_iter = stmt
             .query_map([], |row| {
@@ -85,6 +88,7 @@ pub fn get_pages() -> Result<Vec<PageData>, String> {
                     icon: row.get(2)?,
                     updated_at: row.get(3)?,
                     cover_image: row.get(4).unwrap_or(None),
+                    is_favorite: row.get(5).unwrap_or(None),
                 })
             })
             .map_err(|e| e.to_string())?;
@@ -105,9 +109,9 @@ pub fn get_pages() -> Result<Vec<PageData>, String> {
 pub fn save_page(page: PageData) -> Result<(), String> {
     if let Some(conn) = DB_CONN.lock().unwrap().as_ref() {
         conn.execute(
-            "INSERT INTO pages (id, title, icon, updated_at, cover_image) VALUES (?1, ?2, ?3, ?4, ?5)
-             ON CONFLICT(id) DO UPDATE SET title=excluded.title, icon=excluded.icon, updated_at=excluded.updated_at, cover_image=excluded.cover_image",
-            params![page.id, page.title, page.icon, page.updated_at, page.cover_image]
+            "INSERT INTO pages (id, title, icon, updated_at, cover_image, is_favorite) VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+             ON CONFLICT(id) DO UPDATE SET title=excluded.title, icon=excluded.icon, updated_at=excluded.updated_at, cover_image=excluded.cover_image, is_favorite=excluded.is_favorite",
+            params![page.id, page.title, page.icon, page.updated_at, page.cover_image, page.is_favorite]
         ).map_err(|e| e.to_string())?;
         Ok(())
     } else {

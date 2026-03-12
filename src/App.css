@@ -31,7 +31,8 @@ body {
   background-color: var(--bg-primary);
   color: var(--text-primary);
   transition: background-color 0.3s, color 0.3s;
-  overflow: hidden; /* App-like feel */
+  overflow: hidden;
+  /* App-like feel */
 }
 
 /* Layout Core */
@@ -163,7 +164,7 @@ html[data-theme='dark'] .sidebar-item.active {
   background: var(--bg-primary);
   border: 1px solid var(--border-color);
   border-radius: 6px;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -171,11 +172,11 @@ html[data-theme='dark'] .sidebar-item.active {
 }
 
 html[data-theme='dark'] .react-grid-item {
-  box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
 }
 
 .react-grid-item:hover {
-  box-shadow: 0 2px 6px rgba(0,0,0,0.08);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
 }
 
 .react-resizable-handle {
@@ -207,27 +208,65 @@ html[data-theme='dark'] .react-grid-item {
   font-size: 14px;
 }
 
-/* BlockNote Overrides to fix Heading Sizes */
-.bn-editor h1 {
-  font-size: 32px !important;
-  font-weight: 700 !important;
-  line-height: 1.2 !important;
-  margin-top: 1.5em !important;
-  margin-bottom: 0.5em !important;
+/* BlockNote Native Scaling Logic overrides */
+[data-content-type="heading"], 
+[data-content-type="heading"][data-level="1"] {
+  --level: 36px !important;
+}
+[data-content-type="heading"][data-level="2"] {
+  --level: 28px !important;
+}
+[data-content-type="heading"][data-level="3"] {
+  --level: 22px !important;
 }
 
-.bn-editor h2 {
-  font-size: 24px !important;
-  font-weight: 600 !important;
-  line-height: 1.3 !important;
-  margin-top: 1.4em !important;
-  margin-bottom: 0.4em !important;
+[data-prev-type="heading"],
+[data-prev-level="1"] {
+  --prev-level: 36px !important;
+}
+[data-prev-level="2"] {
+  --prev-level: 28px !important;
+}
+[data-prev-level="3"] {
+  --prev-level: 22px !important;
 }
 
-.bn-editor h3 {
-  font-size: 20px !important;
-  font-weight: 600 !important;
-  line-height: 1.4 !important;
-  margin-top: 1.2em !important;
-  margin-bottom: 0.3em !important;
+/* Inherit the animated font-size from .bn-block-content */
+.app-container .bn-editor h1,
+.app-container .bn-editor h2,
+.app-container .bn-editor h3 {
+  font-size: inherit;
+  margin: 0;
+}
+
+.app-container .bn-editor h1 {
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.app-container .bn-editor h2 {
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.app-container .bn-editor h3 {
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.app-container .bn-editor {
+  padding-bottom: 40vh !important;
+  min-height: 100%;
+}
+
+/* Notion-style text selection highlight */
+.bn-editor ::selection {
+  background: rgba(35, 131, 226, 0.28);
+}
+
+/* Override BlockNote's default boxy blue outline for full-block selections with Notion's soft background */
+.bn-block-content.ProseMirror-selectednode > *,
+.ProseMirror-selectednode > .bn-block-content > * {
+  outline: none !important;
+  background-color: rgba(35, 131, 226, 0.28) !important;
 }

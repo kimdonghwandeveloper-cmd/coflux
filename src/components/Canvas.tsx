@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { webrtcClient } from '../lib/webrtc_client';
 import { listen, UnlistenFn } from '@tauri-apps/api/event';
 import { BlockNoteView } from "@blocknote/mantine";
@@ -199,8 +199,7 @@ export const Canvas = ({
   };
 
   return (
-    <div style={{ flex: 1, overflowY: 'auto', position: 'relative' }}>
-      
+    <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
       {/* Network Debug Bar (Floating Bottom Right) */}
       <div style={{ position: 'fixed', bottom: 24, right: 24, zIndex: 10 }}>
         <button 
@@ -324,7 +323,7 @@ export const Canvas = ({
           </button>
         </div>
 
-        <div style={{ marginLeft: '-50px' }}>
+        <div style={{ marginLeft: '-50px', flex: 1, display: 'flex', flexDirection: 'column' }}>
           {provider ? <CollaborativeEditor provider={provider} currentTheme={currentTheme} /> : <div>Loading page data...</div>}
         </div>
       </div>
