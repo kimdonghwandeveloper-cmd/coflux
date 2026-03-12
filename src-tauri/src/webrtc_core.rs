@@ -60,7 +60,15 @@ pub async fn generate_offer(app_handle: tauri::AppHandle, state: tauri::State<'_
     let app_handle_clone2 = app_handle.clone();
     dc.on_message(Box::new(move |msg| {
         let text = String::from_utf8(msg.data.to_vec()).unwrap_or_default();
-        let _ = app_handle_clone2.emit("webrtc-msg", text);
+        match crate::security::scan_ingress_payload(text) {
+            Ok(safe_text) => {
+                let _ = app_handle_clone2.emit("webrtc-msg", safe_text);
+            }
+            Err(e) => {
+                eprintln!("Blocked maliciously formed P2P packet: {}", e);
+                let _ = app_handle_clone2.emit("webrtc-msg-error", e);
+            }
+        }
         Box::pin(async {})
     }));
 
@@ -98,7 +106,15 @@ pub async fn accept_offer(app_handle: tauri::AppHandle, state: tauri::State<'_, 
         let ah_msg = app_handle_clone.clone();
         dc.on_message(Box::new(move |msg| {
             let text = String::from_utf8(msg.data.to_vec()).unwrap_or_default();
-            let _ = ah_msg.emit("webrtc-msg", text);
+            match crate::security::scan_ingress_payload(text) {
+                Ok(safe_text) => {
+                    let _ = ah_msg.emit("webrtc-msg", safe_text);
+                }
+                Err(e) => {
+                    eprintln!("Blocked maliciously formed P2P packet: {}", e);
+                    let _ = ah_msg.emit("webrtc-msg-error", e);
+                }
+            }
             Box::pin(async {})
         }));
         Box::pin(async {})

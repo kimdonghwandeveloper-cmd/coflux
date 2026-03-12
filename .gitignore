@@ -31,3 +31,8 @@ src-tauri/clippy_report.txt
 # AI Artifacts & Environment
 .gemini/
 .env
+.env.local
+.env.*.local
+
+# OS
+Thumbs.db

@@ -28,5 +28,9 @@ export const webrtcClient = {
 
   sendMessage: async (msg: string): Promise<void> => {
     await invoke("send_message", { msg });
+  },
+
+  getUserStatus: async (): Promise<string> => {
+    return await invoke<string>("get_user_status");
   }
 };
