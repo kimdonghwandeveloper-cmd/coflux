@@ -4,7 +4,12 @@ import { listen, UnlistenFn } from '@tauri-apps/api/event';
 import { BotMessageSquare, X, ChevronDown } from 'lucide-react';
 import { AiChatWidget } from './AiChatWidget';
 
-export const Canvas = () => {
+import { BlockNoteView } from "@blocknote/mantine";
+import { useCreateBlockNote } from "@blocknote/react";
+import "@blocknote/mantine/style.css";
+// import "@blocknote/core/fonts/inter.css"; // Using global Inter font from App.css
+
+export const Canvas = ({ currentTheme }: { currentTheme: 'light' | 'dark' }) => {
   const [offer, setOffer] = useState('');
   const [connState, setConnState] = useState('Disconnected');
   const [copied, setCopied] = useState(false);
@@ -14,6 +19,9 @@ export const Canvas = () => {
   
   const [activeMenu, setActiveMenu] = useState<string | null>(null);
   const [chatOpen, setChatOpen] = useState(false);
+
+  // Initialize BlockNote Core
+  const editor = useCreateBlockNote();
 
   // Poll User OS Activity
   useEffect(() => {
@@ -192,12 +200,14 @@ export const Canvas = () => {
       </div>
 
       {/* Main Empty Canvas (Notion Page Body) */}
-      <div style={{ padding: '40px 60px', flex: 1, overflowY: 'auto' }} onClick={() => setActiveMenu(null)}>
-        <h1 style={{ fontSize: '40px', fontWeight: 700, margin: '0 0 16px 0', letterSpacing: '-0.02em', outline: 'none' }} contentEditable suppressContentEditableWarning>
-          Untitled
-        </h1>
-        <div style={{ fontSize: '16px', color: 'var(--text-secondary)', minHeight: '100px', outline: 'none' }} contentEditable suppressContentEditableWarning>
-          Press Enter to continue with an empty page, or type '/' for commands.
+      <div style={{ flex: 1, overflowY: 'auto' }} onClick={() => setActiveMenu(null)}>
+        <div style={{ padding: '40px 60px 20px', maxWidth: '900px', margin: '0 auto' }}>
+          <h1 style={{ fontSize: '40px', fontWeight: 700, margin: '0 0 16px 50px', letterSpacing: '-0.02em', outline: 'none', color: 'var(--text-primary)' }} contentEditable suppressContentEditableWarning>
+            Untitled Workspace
+          </h1>
+        </div>
+        <div style={{ maxWidth: '900px', margin: '0 auto' }}>
+          <BlockNoteView editor={editor} theme={currentTheme} />
         </div>
       </div>
 

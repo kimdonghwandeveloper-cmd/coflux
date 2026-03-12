@@ -46,7 +46,7 @@ function App() {
           </button>
           <div style={{ fontSize: '14px', color: 'var(--text-secondary)' }}>Coflux Workspace / General Workspace</div>
         </div>
-        <Canvas />
+        <Canvas currentTheme={theme} />
       </div>
     </div>
   );
