@@ -1,33 +1,19 @@
 import { useState, useEffect } from 'react';
-import RGL, { WidthProvider } from 'react-grid-layout/legacy';
-
-const GridLayout = WidthProvider(RGL);
-import 'react-grid-layout/css/styles.css';
-import 'react-resizable/css/styles.css';
 import { webrtcClient } from '../lib/webrtc_client';
 import { listen, UnlistenFn } from '@tauri-apps/api/event';
-import { Moon, Sun, Link, Copy, Check, Activity } from 'lucide-react';
+import { BotMessageSquare, X, ChevronDown } from 'lucide-react';
 import { AiChatWidget } from './AiChatWidget';
 
-const layoutSchema = [
-  { i: 'signaler', x: 0, y: 0, w: 4, h: 4, minW: 3, minH: 3 },
-  { i: 'status', x: 4, y: 0, w: 4, h: 4, minW: 3, minH: 3 },
-  { i: 'activity', x: 8, y: 0, w: 4, h: 4, minW: 3, minH: 3 },
-  { i: 'chat', x: 0, y: 4, w: 8, h: 7, minW: 5, minH: 5 }
-];
-
 export const Canvas = () => {
-  const [theme, setTheme] = useState<'light' | 'dark'>('light');
   const [offer, setOffer] = useState('');
   const [connState, setConnState] = useState('Disconnected');
   const [copied, setCopied] = useState(false);
   const [latency, setLatency] = useState<number | null>(null);
   const [userStatus, setUserStatus] = useState('Active');
   const [autoPing, setAutoPing] = useState(false);
-
-  useEffect(() => {
-    document.documentElement.setAttribute('data-theme', theme);
-  }, [theme]);
+  
+  const [activeMenu, setActiveMenu] = useState<string | null>(null);
+  const [chatOpen, setChatOpen] = useState(false);
 
   // Poll User OS Activity
   useEffect(() => {
@@ -47,11 +33,10 @@ export const Canvas = () => {
     let pingInterval: any;
     if (autoPing && connState === 'Connected!') {
       pingInterval = setInterval(() => {
-        // [PHASE 2 ZERO-COST LOGIC]: Pause network failover loops if user is Away
         if (userStatus !== 'Away') {
            webrtcClient.sendMessage(`ping_${Date.now()}`).catch(console.error);
         } else {
-           setLatency(null); // Clear latency to show it's paused
+           setLatency(null);
         }
       }, 2000);
     }
@@ -123,124 +108,170 @@ export const Canvas = () => {
     }
   };
 
+  const TopMenuBtn = ({ label, menuKey, children }: any) => (
+    <div style={{ position: 'relative' }}>
+      <button 
+        className="top-menu-btn"
+        onClick={() => setActiveMenu(activeMenu === menuKey ? null : menuKey)}
+        style={{ 
+          background: activeMenu === menuKey ? 'var(--bg-secondary)' : 'transparent',
+          border: 'none',
+          color: 'var(--text-secondary)',
+          padding: '4px 12px',
+          fontSize: '13px',
+          cursor: 'pointer',
+          borderRadius: '4px',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '4px'
+        }}
+      >
+        {label} <ChevronDown size={12} />
+      </button>
+      {activeMenu === menuKey && (
+        <div className="top-menu-dropdown" style={{
+          position: 'absolute',
+          top: '100%',
+          left: 0,
+          background: 'var(--bg-primary)',
+          border: '1px solid var(--border-color)',
+          boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
+          borderRadius: '6px',
+          padding: '8px',
+          zIndex: 100,
+          minWidth: '240px',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '4px'
+        }}>
+          {children}
+        </div>
+      )}
+    </div>
+  );
+
   return (
-    <div style={{ padding: '20px', minHeight: '100vh' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '20px' }}>
-        <h2 style={{ margin: 0, fontWeight: 600 }}>Coflux P2P Workspace</h2>
+    <div style={{ display: 'flex', flexDirection: 'column', flex: 1, position: 'relative' }}>
+      {/* Top Menu Bar */}
+      <div style={{ 
+        display: 'flex', 
+        padding: '0 16px 8px', 
+        borderBottom: '1px solid var(--border-color)',
+        gap: '4px'
+      }}>
+        <TopMenuBtn label="SDP Signaling" menuKey="sdp">
+          <button className="notion-btn" onClick={handleGenerateOffer}>1. Generate Offer</button>
+          <button className="notion-btn" onClick={handleAcceptOffer}>2. Accept Offer</button>
+          <button className="notion-btn" onClick={handleAcceptAnswer}>3. Accept Answer</button>
+          {copied && <span style={{ fontSize: '12px', color: 'var(--success)', alignSelf: 'center' }}>Copied to clipboard!</span>}
+          {offer && <div style={{ fontSize: '11px', color: 'var(--text-secondary)', textAlign: 'center', marginTop: '4px' }}>SDP Length: {offer.length} chars</div>}
+        </TopMenuBtn>
+
+        <TopMenuBtn label="Network Status" menuKey="network">
+          <div style={{ padding: '4px 8px', fontSize: '13px' }}>
+            <span style={{ color: connState.includes('Connected') ? 'var(--success)' : 'var(--text-primary)' }}>
+              ● {connState}
+            </span>
+          </div>
+          {connState === 'Connected!' && (
+            <button className="notion-btn" onClick={() => setAutoPing(!autoPing)}>
+              {autoPing ? 'Stop' : 'Start'} Auto Ping
+            </button>
+          )}
+          {latency !== null && (
+            <div style={{ padding: '4px 8px', fontSize: '13px', color: 'var(--success)' }}>Latency: {latency} ms</div>
+          )}
+        </TopMenuBtn>
+
+        <TopMenuBtn label={`Activity: ${userStatus}`} menuKey="activity">
+          <div style={{ padding: '8px', fontSize: '13px', color: 'var(--text-secondary)' }}>
+            System state is currently {userStatus}.
+            {userStatus === 'Away' && ' Heavy P2P tasks are suspended (Zero-cost failover).'}
+          </div>
+        </TopMenuBtn>
+      </div>
+
+      {/* Main Empty Canvas (Notion Page Body) */}
+      <div style={{ padding: '40px 60px', flex: 1, overflowY: 'auto' }} onClick={() => setActiveMenu(null)}>
+        <h1 style={{ fontSize: '40px', fontWeight: 700, margin: '0 0 16px 0', letterSpacing: '-0.02em', outline: 'none' }} contentEditable suppressContentEditableWarning>
+          Untitled
+        </h1>
+        <div style={{ fontSize: '16px', color: 'var(--text-secondary)', minHeight: '100px', outline: 'none' }} contentEditable suppressContentEditableWarning>
+          Press Enter to continue with an empty page, or type '/' for commands.
+        </div>
+      </div>
+
+      {/* Floating AI Chat Widget */}
+      <div style={{ position: 'absolute', bottom: '24px', right: '24px', zIndex: 50 }}>
+        {chatOpen && (
+          <div style={{ 
+            width: '360px', 
+            height: '480px', 
+            background: 'var(--bg-primary)',
+            border: '1px solid var(--border-color)',
+            borderRadius: '12px',
+            boxShadow: '0 8px 30px rgba(0,0,0,0.12)',
+            marginBottom: '16px',
+            display: 'flex',
+            flexDirection: 'column',
+            overflow: 'hidden',
+            animation: 'slideUpFade 0.3s ease-out forwards'
+          }}>
+            <div style={{ 
+              padding: '12px 16px', 
+              borderBottom: '1px solid var(--border-color)',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              fontWeight: 600,
+              fontSize: '14px'
+            }}>
+              AI Router Chat (P2P Handover)
+              <button onClick={() => setChatOpen(false)} style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)' }}>
+                <X size={18} />
+              </button>
+            </div>
+            <div style={{ flex: 1, height: '100%', overflow: 'hidden' }}>
+              <AiChatWidget connState={connState} />
+            </div>
+          </div>
+        )}
+        
         <button 
-          className="notion-btn" 
-          onClick={() => setTheme(t => t === 'light' ? 'dark' : 'light')}
+          onClick={() => setChatOpen(!chatOpen)}
+          style={{
+            width: '56px',
+            height: '56px',
+            borderRadius: '28px',
+            background: 'var(--accent)',
+            color: 'var(--bg-primary)',
+            border: 'none',
+            boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            cursor: 'pointer',
+            float: 'right',
+            transition: 'transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275)'
+          }}
+          onMouseEnter={e => e.currentTarget.style.transform = 'scale(1.1)'}
+          onMouseLeave={e => e.currentTarget.style.transform = 'scale(1)'}
         >
-          {theme === 'light' ? <Moon size={16} /> : <Sun size={16} />} 
-          Theme
+          {chatOpen ? <X size={24} /> : <BotMessageSquare size={24} />}
         </button>
       </div>
-      
-      <GridLayout 
-        className="layout" 
-        layout={layoutSchema} 
-        cols={12} 
-        rowHeight={30} 
-        draggableHandle=".widget-header"
-      >
-        <div key="signaler">
-          <div className="widget-header">
-            <span>SDP Signaling</span>
-          </div>
-          <div className="widget-body" style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-            <p style={{ margin: 0, fontSize: '13px', color: 'var(--text-secondary)' }}>
-              Serverless Clipboard-based P2P connection exchange.
-            </p>
-            <button className="notion-btn primary" onClick={handleGenerateOffer}>
-              <Link size={16} /> 1. Generate Offer
-            </button>
-            <button className="notion-btn" onClick={handleAcceptOffer}>
-              <Copy size={16} /> 2. Accept Offer (from clipboard)
-            </button>
-            <button className="notion-btn primary" onClick={handleAcceptAnswer}>
-              <Check size={16} /> 3. Accept Answer (from clipboard)
-            </button>
-            
-            {offer && (
-              <div style={{ marginTop: '10px', fontSize: '11px', color: 'var(--text-secondary)', wordBreak: 'break-all' }}>
-                <strong>Last SDP Length:</strong> {offer.length} chars
-              </div>
-            )}
-            {copied && <p style={{ fontSize: '12px', color: 'var(--success)', margin: 0 }}>Copied to clipboard!</p>}
-          </div>
-        </div>
 
-        <div key="status">
-          <div className="widget-header">
-            <span>Network Status</span>
-          </div>
-          <div className="widget-body" style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-            <div style={{ display: 'flex', alignItems: 'center' }}>
-              <span style={{ 
-                display: 'inline-block', width: '10px', height: '10px', borderRadius: '50%', 
-                backgroundColor: connState === 'Connected!' ? 'var(--success)' : (connState.includes('Error') ? 'var(--error)' : 'var(--accent)'),
-                marginRight: '8px'
-              }}></span>
-              <strong>{connState}</strong>
-            </div>
-
-            {connState === 'Connected!' && (
-              <div style={{ borderTop: '1px solid var(--border-color)', paddingTop: '12px' }}>
-                <button 
-                  className={`notion-btn ${autoPing ? 'primary' : ''}`}
-                  onClick={() => setAutoPing(!autoPing)}
-                >
-                  <Activity size={16} /> {autoPing ? 'Stop Auto Ping' : 'Start Auto Ping'}
-                </button>
-                {latency !== null && userStatus !== 'Away' && (
-                  <p style={{ marginTop: '8px', fontSize: '13px', color: 'var(--success)' }}>
-                    <strong>Latency:</strong> {latency} ms
-                  </p>
-                )}
-                {autoPing && userStatus === 'Away' && (
-                  <p style={{ marginTop: '8px', fontSize: '13px', color: 'var(--text-secondary)' }}>
-                    <em>Network Paused (Away mode)</em>
-                  </p>
-                )}
-              </div>
-            )}
-          </div>
-        </div>
-
-        <div key="activity">
-          <div className="widget-header">
-            <span>User Activity (Phase 2)</span>
-          </div>
-          <div className="widget-body" style={{ display: 'flex', flexDirection: 'column', gap: '8px', justifyContent: 'center', alignItems: 'center' }}>
-            <div style={{ 
-               padding: '20px', 
-               borderRadius: '50%', 
-               backgroundColor: userStatus === 'Active' ? 'var(--success)' : 'var(--text-secondary)',
-               color: 'white',
-               fontWeight: 'bold',
-               fontSize: '18px',
-               marginBottom: '10px',
-               transition: 'background-color 0.5s ease'
-            }}>
-              {userStatus}
-            </div>
-            <p style={{ fontSize: '12px', color: 'var(--text-secondary)', textAlign: 'center', margin: 0 }}>
-              {userStatus === 'Active' 
-                ? "Monitoring global mouse/keyboard events via rdev." 
-                : "Idle threshold reached. Failover and heavy network tasks are suspended to preserve hardware resources (Zero-cost)."}
-            </p>
-          </div>
-        </div>
-
-        <div key="chat">
-          <div className="widget-header">
-            <span>AI Router Chat (P2P Handover & SQLite)</span>
-          </div>
-          <div className="widget-body" style={{ height: 'calc(100% - 30px)' }}>
-            <AiChatWidget connState={connState} />
-          </div>
-        </div>
-      </GridLayout>
+      {/* Floating Widget Animations */}
+      <style>{`
+        @keyframes slideUpFade {
+          from { opacity: 0; transform: translateY(20px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+        .top-menu-btn:hover {
+          background: var(--bg-secondary) !important;
+          color: var(--text-primary) !important;
+        }
+      `}</style>
     </div>
   );
 };
