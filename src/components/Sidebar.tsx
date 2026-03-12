@@ -1,11 +1,74 @@
 import { useState, useRef, useEffect } from 'react';
-import { Plus, Settings, Moon, Sun, MoreHorizontal, Star, Trash2, ChevronDown, ChevronRight } from 'lucide-react';
+import { Plus, Settings, Moon, Sun, MoreHorizontal, Star, Trash2, ChevronDown, ChevronRight, RotateCcw, X, GripVertical } from 'lucide-react';
 import { PageData, WorkspaceData } from '../App';
+import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, DragEndEvent } from '@dnd-kit/core';
+import { SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy, useSortable, arrayMove } from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
+
+// Sortable page item wrapper
+const SortablePageItem = ({ page, depth, activePageId, setActivePageId, openMenuId, setOpenMenuId, onUpdatePage, onDeletePage, menuRef, hasChildren, expandedIds, toggleExpand, getChildren, renderPageItem }: any) => {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: page.id });
+  const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.5 : 1, };
+
+  const children = getChildren(page.id);
+  const isExpanded = expandedIds.has(page.id);
+
+  return (
+    <div ref={setNodeRef} style={style}>
+      <div 
+        className={`sidebar-item ${activePageId === page.id ? 'active' : ''}`}
+        onClick={() => setActivePageId(page.id)}
+        style={{ position: 'relative', display: 'flex', justifyContent: 'space-between', paddingRight: '4px', paddingLeft: `${12 + depth * 16}px` }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: '2px', overflow: 'hidden' }}>
+          <div {...attributes} {...listeners} style={{ cursor: 'grab', display: 'flex', padding: '2px', flexShrink: 0 }}>
+            <GripVertical size={12} color="var(--text-secondary)" style={{ opacity: 0.4 }} />
+          </div>
+          {hasChildren(page.id) ? (
+            <div onClick={(e) => { e.stopPropagation(); toggleExpand(page.id); }} style={{ cursor: 'pointer', display: 'flex', padding: '2px' }}>
+              {isExpanded ? <ChevronDown size={14} color="var(--text-secondary)" /> : <ChevronRight size={14} color="var(--text-secondary)" />}
+            </div>
+          ) : (
+            <div style={{ width: '18px' }} />
+          )}
+          <span style={{ fontSize: '16px' }}>{page.icon}</span>
+          <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{page.title}</span>
+        </div>
+        
+        <div className="sidebar-item-actions"
+          onClick={(e) => { e.stopPropagation(); setOpenMenuId(openMenuId === page.id ? null : page.id); }}
+          style={{ padding: '2px', borderRadius: '4px', cursor: 'pointer', display: 'flex', flexShrink: 0 }}>
+          <MoreHorizontal size={16} color="var(--text-secondary)" />
+        </div>
+
+        {openMenuId === page.id && (
+          <div ref={menuRef}
+            style={{ position: 'absolute', top: '28px', right: '8px', background: 'var(--bg-primary)', border: '1px solid var(--border-color)', boxShadow: '0 4px 12px rgba(0,0,0,0.1)', borderRadius: '6px', zIndex: 100, padding: '4px', width: '200px', display: 'flex', flexDirection: 'column', gap: '2px' }}
+            onClick={e => e.stopPropagation()}>
+            <div className="sidebar-item" style={{ margin: 0, padding: '6px 8px' }}
+              onClick={(e) => { e.stopPropagation(); onUpdatePage({ ...page, isFavorite: !page.isFavorite }); setOpenMenuId(null); }}>
+              <Star size={14} fill={page.isFavorite ? 'currentColor' : 'none'} color={page.isFavorite ? 'var(--accent)' : 'var(--text-secondary)'} />
+              <span style={{ fontSize: '13px' }}>{page.isFavorite ? 'Remove from Favorites' : 'Add to Favorites'}</span>
+            </div>
+            <div style={{ height: '1px', background: 'var(--border-color)', margin: '4px 0' }} />
+            <div className="sidebar-item" style={{ margin: 0, padding: '6px 8px', color: 'var(--error)' }}
+              onClick={(e) => { e.stopPropagation(); onDeletePage(page.id); setOpenMenuId(null); }}>
+              <Trash2 size={14} />
+              <span style={{ fontSize: '13px' }}>Delete</span>
+            </div>
+          </div>
+        )}
+      </div>
+      {isExpanded && children.map((child: PageData) => renderPageItem(child, depth + 1))}
+    </div>
+  );
+};
 
 export const Sidebar = ({ 
   theme, 
   toggleTheme, 
   pages,
+  trashedPages,
   activePageId,
   setActivePageId,
   workspaces,
@@ -14,11 +77,16 @@ export const Sidebar = ({
   onAddWorkspace,
   onAddPage,
   onUpdatePage,
-  onDeletePage
+  onDeletePage,
+  onRestorePage,
+  onPermanentlyDeletePage,
+  onOpenSettings,
+  onReorderPages
 }: { 
   theme: string, 
   toggleTheme: () => void,
   pages: PageData[],
+  trashedPages: PageData[],
   activePageId: string,
   setActivePageId: (id: string) => void,
   workspaces: WorkspaceData[],
@@ -27,14 +95,24 @@ export const Sidebar = ({
   onAddWorkspace: (name: string) => void,
   onAddPage: () => void,
   onUpdatePage: (p: PageData) => void,
-  onDeletePage: (id: string) => void
+  onDeletePage: (id: string) => void,
+  onRestorePage: (id: string) => void,
+  onPermanentlyDeletePage: (id: string) => void,
+  onOpenSettings: () => void,
+  onReorderPages: (ids: string[]) => void
 }) => {
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
   const [showWsDropdown, setShowWsDropdown] = useState(false);
+  const [showTrash, setShowTrash] = useState(false);
   const [newWsName, setNewWsName] = useState('');
   const menuRef = useRef<HTMLDivElement>(null);
   const wsRef = useRef<HTMLDivElement>(null);
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
+  );
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -60,57 +138,36 @@ export const Sidebar = ({
   const favoriteRoots = pages.filter(p => p.isFavorite && !p.parentId);
   const privateRoots = pages.filter(p => !p.isFavorite && !p.parentId);
 
-  const renderPageItem = (page: PageData, depth: number = 0) => {
-    const children = getChildren(page.id);
-    const isExpanded = expandedIds.has(page.id);
-
-    return (
-      <div key={page.id}>
-        <div 
-          className={`sidebar-item ${activePageId === page.id ? 'active' : ''}`}
-          onClick={() => setActivePageId(page.id)}
-          style={{ position: 'relative', display: 'flex', justifyContent: 'space-between', paddingRight: '4px', paddingLeft: `${12 + depth * 16}px` }}
-        >
-          <div style={{ display: 'flex', alignItems: 'center', gap: '4px', overflow: 'hidden' }}>
-            {hasChildren(page.id) ? (
-              <div onClick={(e) => { e.stopPropagation(); toggleExpand(page.id); }} style={{ cursor: 'pointer', display: 'flex', padding: '2px' }}>
-                {isExpanded ? <ChevronDown size={14} color="var(--text-secondary)" /> : <ChevronRight size={14} color="var(--text-secondary)" />}
-              </div>
-            ) : (
-              <div style={{ width: '18px' }} />
-            )}
-            <span style={{ fontSize: '16px' }}>{page.icon}</span>
-            <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{page.title}</span>
-          </div>
-          
-          <div className="sidebar-item-actions"
-            onClick={(e) => { e.stopPropagation(); setOpenMenuId(openMenuId === page.id ? null : page.id); }}
-            style={{ padding: '2px', borderRadius: '4px', cursor: 'pointer', display: 'flex', flexShrink: 0 }}>
-            <MoreHorizontal size={16} color="var(--text-secondary)" />
-          </div>
-
-          {openMenuId === page.id && (
-            <div ref={menuRef}
-              style={{ position: 'absolute', top: '28px', right: '8px', background: 'var(--bg-primary)', border: '1px solid var(--border-color)', boxShadow: '0 4px 12px rgba(0,0,0,0.1)', borderRadius: '6px', zIndex: 100, padding: '4px', width: '200px', display: 'flex', flexDirection: 'column', gap: '2px' }}
-              onClick={e => e.stopPropagation()}>
-              <div className="sidebar-item" style={{ margin: 0, padding: '6px 8px' }}
-                onClick={(e) => { e.stopPropagation(); onUpdatePage({ ...page, isFavorite: !page.isFavorite }); setOpenMenuId(null); }}>
-                <Star size={14} fill={page.isFavorite ? 'currentColor' : 'none'} color={page.isFavorite ? 'var(--accent)' : 'var(--text-secondary)'} />
-                <span style={{ fontSize: '13px' }}>{page.isFavorite ? 'Remove from Favorites' : 'Add to Favorites'}</span>
-              </div>
-              <div style={{ height: '1px', background: 'var(--border-color)', margin: '4px 0' }} />
-              <div className="sidebar-item" style={{ margin: 0, padding: '6px 8px', color: 'var(--error)' }}
-                onClick={(e) => { e.stopPropagation(); onDeletePage(page.id); setOpenMenuId(null); }}>
-                <Trash2 size={14} />
-                <span style={{ fontSize: '13px' }}>Delete</span>
-              </div>
-            </div>
-          )}
-        </div>
-        {isExpanded && children.map(child => renderPageItem(child, depth + 1))}
-      </div>
-    );
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    const oldIds = privateRoots.map(p => p.id);
+    const oldIndex = oldIds.indexOf(active.id as string);
+    const newIndex = oldIds.indexOf(over.id as string);
+    if (oldIndex < 0 || newIndex < 0) return;
+    const newOrder = arrayMove(oldIds, oldIndex, newIndex);
+    onReorderPages(newOrder);
   };
+
+  const renderPageItem = (page: PageData, depth: number = 0) => (
+    <SortablePageItem
+      key={page.id}
+      page={page}
+      depth={depth}
+      activePageId={activePageId}
+      setActivePageId={setActivePageId}
+      openMenuId={openMenuId}
+      setOpenMenuId={setOpenMenuId}
+      onUpdatePage={onUpdatePage}
+      onDeletePage={onDeletePage}
+      menuRef={menuRef}
+      hasChildren={hasChildren}
+      expandedIds={expandedIds}
+      toggleExpand={toggleExpand}
+      getChildren={getChildren}
+      renderPageItem={renderPageItem}
+    />
+  );
 
   return (
     <div className="sidebar" style={{ paddingTop: '16px' }}>
@@ -163,12 +220,49 @@ export const Sidebar = ({
               <Plus size={16} color="var(--text-secondary)" />
             </div>
           </div>
-          {privateRoots.map(p => renderPageItem(p, 0))}
+          <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+            <SortableContext items={privateRoots.map(p => p.id)} strategy={verticalListSortingStrategy}>
+              {privateRoots.map(p => renderPageItem(p, 0))}
+            </SortableContext>
+          </DndContext>
+        </div>
+
+        {/* Trash Section */}
+        <div style={{ marginTop: '16px' }}>
+          <div 
+            style={{ padding: '0 16px 8px', display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}
+            onClick={() => setShowTrash(!showTrash)}>
+            <Trash2 size={12} color="var(--text-secondary)" />
+            <div style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+              Trash {trashedPages.length > 0 && `(${trashedPages.length})`}
+            </div>
+            {trashedPages.length > 0 && (
+              showTrash ? <ChevronDown size={12} color="var(--text-secondary)" /> : <ChevronRight size={12} color="var(--text-secondary)" />
+            )}
+          </div>
+          {showTrash && trashedPages.map(page => (
+            <div key={page.id} className="sidebar-item" style={{ paddingRight: '4px', opacity: 0.6 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', overflow: 'hidden', flex: 1 }}>
+                <span style={{ fontSize: '16px' }}>{page.icon}</span>
+                <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', fontSize: '13px', textDecoration: 'line-through' }}>{page.title}</span>
+              </div>
+              <div style={{ display: 'flex', gap: '4px', flexShrink: 0 }}>
+                <div onClick={(e) => { e.stopPropagation(); onRestorePage(page.id); }} title="Restore"
+                  style={{ padding: '2px', cursor: 'pointer', borderRadius: '4px' }}>
+                  <RotateCcw size={14} color="var(--text-secondary)" />
+                </div>
+                <div onClick={(e) => { e.stopPropagation(); onPermanentlyDeletePage(page.id); }} title="Delete permanently"
+                  style={{ padding: '2px', cursor: 'pointer', borderRadius: '4px' }}>
+                  <X size={14} color="var(--error)" />
+                </div>
+              </div>
+            </div>
+          ))}
         </div>
       </div>
 
       <div style={{ padding: '12px 16px', borderTop: '1px solid var(--border-color)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <div className="sidebar-item" style={{ margin: 0, padding: '4px 8px', gap: '8px' }} title="Settings">
+        <div className="sidebar-item" style={{ margin: 0, padding: '4px 8px', gap: '8px' }} title="Settings" onClick={onOpenSettings}>
           <Settings size={16} color="var(--text-secondary)" />
           <span style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>Settings</span>
         </div>

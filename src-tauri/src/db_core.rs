@@ -24,6 +24,8 @@ pub struct PageData {
     pub is_favorite: Option<bool>,
     pub workspace_id: Option<String>,
     pub parent_id: Option<String>,
+    pub is_deleted: Option<bool>,
+    pub sort_order: Option<i64>,
 }
 
 lazy_static! {
@@ -73,7 +75,9 @@ pub fn init_db(app_handle: &tauri::AppHandle) -> Result<()> {
             cover_image TEXT,
             is_favorite BOOLEAN,
             workspace_id TEXT,
-            parent_id TEXT
+            parent_id TEXT,
+            is_deleted BOOLEAN DEFAULT 0,
+            sort_order INTEGER DEFAULT 0
         )",
         [],
     )?;
@@ -83,6 +87,18 @@ pub fn init_db(app_handle: &tauri::AppHandle) -> Result<()> {
     let _ = conn.execute("ALTER TABLE pages ADD COLUMN is_favorite BOOLEAN", []);
     let _ = conn.execute("ALTER TABLE pages ADD COLUMN workspace_id TEXT", []);
     let _ = conn.execute("ALTER TABLE pages ADD COLUMN parent_id TEXT", []);
+    let _ = conn.execute("ALTER TABLE pages ADD COLUMN is_deleted BOOLEAN DEFAULT 0", []);
+    let _ = conn.execute("ALTER TABLE pages ADD COLUMN sort_order INTEGER DEFAULT 0", []);
+    // Create a table for inline assets (images, files)
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS page_assets (
+            id TEXT PRIMARY KEY,
+            page_id TEXT NOT NULL,
+            data TEXT NOT NULL,
+            mime_type TEXT NOT NULL
+        )",
+        [],
+    )?;
 
     // Create a table for AI routing logs
     conn.execute(
@@ -175,7 +191,7 @@ pub fn delete_workspace(workspace_id: String) -> Result<(), String> {
 pub fn get_pages() -> Result<Vec<PageData>, String> {
     if let Some(conn) = DB_CONN.lock().unwrap().as_ref() {
         let mut stmt = conn
-            .prepare("SELECT id, title, icon, updated_at, cover_image, is_favorite, workspace_id, parent_id FROM pages")
+            .prepare("SELECT id, title, icon, updated_at, cover_image, is_favorite, workspace_id, parent_id, is_deleted, sort_order FROM pages ORDER BY sort_order ASC")
             .map_err(|e| e.to_string())?;
         let page_iter = stmt
             .query_map([], |row| {
@@ -188,6 +204,8 @@ pub fn get_pages() -> Result<Vec<PageData>, String> {
                     is_favorite: row.get(5).unwrap_or(None),
                     workspace_id: row.get(6).unwrap_or(None),
                     parent_id: row.get(7).unwrap_or(None),
+                    is_deleted: row.get(8).unwrap_or(Some(false)),
+                    sort_order: row.get(9).unwrap_or(Some(0)),
                 })
             })
             .map_err(|e| e.to_string())?;
@@ -208,9 +226,9 @@ pub fn get_pages() -> Result<Vec<PageData>, String> {
 pub fn save_page(page: PageData) -> Result<(), String> {
     if let Some(conn) = DB_CONN.lock().unwrap().as_ref() {
         conn.execute(
-            "INSERT INTO pages (id, title, icon, updated_at, cover_image, is_favorite, workspace_id, parent_id) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
-             ON CONFLICT(id) DO UPDATE SET title=excluded.title, icon=excluded.icon, updated_at=excluded.updated_at, cover_image=excluded.cover_image, is_favorite=excluded.is_favorite, workspace_id=excluded.workspace_id, parent_id=excluded.parent_id",
-            params![page.id, page.title, page.icon, page.updated_at, page.cover_image, page.is_favorite, page.workspace_id, page.parent_id]
+            "INSERT INTO pages (id, title, icon, updated_at, cover_image, is_favorite, workspace_id, parent_id, is_deleted, sort_order) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
+             ON CONFLICT(id) DO UPDATE SET title=excluded.title, icon=excluded.icon, updated_at=excluded.updated_at, cover_image=excluded.cover_image, is_favorite=excluded.is_favorite, workspace_id=excluded.workspace_id, parent_id=excluded.parent_id, is_deleted=excluded.is_deleted, sort_order=excluded.sort_order",
+            params![page.id, page.title, page.icon, page.updated_at, page.cover_image, page.is_favorite, page.workspace_id, page.parent_id, page.is_deleted, page.sort_order]
         ).map_err(|e| e.to_string())?;
         Ok(())
     } else {
@@ -221,26 +239,69 @@ pub fn save_page(page: PageData) -> Result<(), String> {
 #[tauri::command]
 pub fn delete_page(page_id: String) -> Result<(), String> {
     if let Some(conn) = DB_CONN.lock().unwrap().as_ref() {
-        // Cascade: recursively collect all child page IDs
-        let mut ids_to_delete = vec![page_id.clone()];
+        // Soft delete: set is_deleted = true for page and all children
+        let mut ids = vec![page_id.clone()];
         let mut i = 0;
-        while i < ids_to_delete.len() {
-            let current_id = ids_to_delete[i].clone();
+        while i < ids.len() {
+            let cid = ids[i].clone();
             let mut stmt = conn.prepare("SELECT id FROM pages WHERE parent_id = ?1")
                 .map_err(|e| e.to_string())?;
-            let child_iter = stmt.query_map(params![&current_id], |row| row.get::<_, String>(0))
+            let children = stmt.query_map(params![&cid], |row| row.get::<_, String>(0))
                 .map_err(|e| e.to_string())?;
-            for child in child_iter {
-                if let Ok(cid) = child { ids_to_delete.push(cid); }
-            }
+            for c in children { if let Ok(id) = c { ids.push(id); } }
             i += 1;
         }
+        for id in &ids {
+            conn.execute("UPDATE pages SET is_deleted = 1 WHERE id = ?1", params![id])
+                .map_err(|e| e.to_string())?;
+        }
+        Ok(())
+    } else {
+        Err("Database not initialized".into())
+    }
+}
 
-        for id in &ids_to_delete {
-            conn.execute("DELETE FROM yjs_updates WHERE page_id = ?1", params![id])
+#[tauri::command]
+pub fn restore_page(page_id: String) -> Result<(), String> {
+    if let Some(conn) = DB_CONN.lock().unwrap().as_ref() {
+        let mut ids = vec![page_id.clone()];
+        let mut i = 0;
+        while i < ids.len() {
+            let cid = ids[i].clone();
+            let mut stmt = conn.prepare("SELECT id FROM pages WHERE parent_id = ?1")
                 .map_err(|e| e.to_string())?;
-            conn.execute("DELETE FROM pages WHERE id = ?1", params![id])
+            let children = stmt.query_map(params![&cid], |row| row.get::<_, String>(0))
                 .map_err(|e| e.to_string())?;
+            for c in children { if let Ok(id) = c { ids.push(id); } }
+            i += 1;
+        }
+        for id in &ids {
+            conn.execute("UPDATE pages SET is_deleted = 0 WHERE id = ?1", params![id])
+                .map_err(|e| e.to_string())?;
+        }
+        Ok(())
+    } else {
+        Err("Database not initialized".into())
+    }
+}
+
+#[tauri::command]
+pub fn permanently_delete_page(page_id: String) -> Result<(), String> {
+    if let Some(conn) = DB_CONN.lock().unwrap().as_ref() {
+        let mut ids = vec![page_id.clone()];
+        let mut i = 0;
+        while i < ids.len() {
+            let cid = ids[i].clone();
+            let mut stmt = conn.prepare("SELECT id FROM pages WHERE parent_id = ?1")
+                .map_err(|e| e.to_string())?;
+            let children = stmt.query_map(params![&cid], |row| row.get::<_, String>(0))
+                .map_err(|e| e.to_string())?;
+            for c in children { if let Ok(id) = c { ids.push(id); } }
+            i += 1;
+        }
+        for id in &ids {
+            conn.execute("DELETE FROM yjs_updates WHERE page_id = ?1", params![id]).map_err(|e| e.to_string())?;
+            conn.execute("DELETE FROM pages WHERE id = ?1", params![id]).map_err(|e| e.to_string())?;
         }
         Ok(())
     } else {
@@ -281,6 +342,35 @@ pub fn get_yjs_updates(page_id: String) -> Result<Vec<Vec<u8>>, String> {
             }
         }
         Ok(updates)
+    } else {
+        Err("Database not initialized".into())
+    }
+}
+
+// ── Inline Asset Persistence ────────────────────────────────
+
+#[tauri::command]
+pub fn save_asset(id: String, page_id: String, data: String, mime_type: String) -> Result<(), String> {
+    if let Some(conn) = DB_CONN.lock().unwrap().as_ref() {
+        conn.execute(
+            "INSERT OR REPLACE INTO page_assets (id, page_id, data, mime_type) VALUES (?1, ?2, ?3, ?4)",
+            params![id, page_id, data, mime_type],
+        ).map_err(|e| e.to_string())?;
+        Ok(())
+    } else {
+        Err("Database not initialized".into())
+    }
+}
+
+#[tauri::command]
+pub fn get_asset(id: String) -> Result<String, String> {
+    if let Some(conn) = DB_CONN.lock().unwrap().as_ref() {
+        let data: String = conn.query_row(
+            "SELECT data FROM page_assets WHERE id = ?1",
+            params![id],
+            |row| row.get(0),
+        ).map_err(|e| e.to_string())?;
+        Ok(data)
     } else {
         Err("Database not initialized".into())
     }

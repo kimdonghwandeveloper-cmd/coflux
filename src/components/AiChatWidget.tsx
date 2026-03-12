@@ -5,7 +5,7 @@ import { sharedChat, getEncodedYjsUpdateString, applyIncomingYjsUpdate } from '.
 import { routeAiTask } from '../lib/ai_router';
 import { listen, UnlistenFn } from '@tauri-apps/api/event';
 
-export const AiChatWidget = ({ connState }: { connState: string }) => {
+export const AiChatWidget = ({ connState, pageTitle }: { connState: string, pageTitle?: string }) => {
   const [messages, setMessages] = useState(sharedChat.toArray());
   const [input, setInput] = useState('');
   
@@ -42,8 +42,9 @@ export const AiChatWidget = ({ connState }: { connState: string }) => {
        webrtcClient.sendMessage('yjs_' + getEncodedYjsUpdateString()).catch(console.error);
     }
 
-    // Step C: Prompt AI Router and wait for local/external response
-    const aiResp = await routeAiTask({ type: 'ai_request', prompt: input, externalAllowed: true });
+    // Step C: Prompt AI Router with page context
+    const contextPrefix = pageTitle ? `[Context: User is editing page "${pageTitle}"] ` : '';
+    const aiResp = await routeAiTask({ type: 'ai_request', prompt: contextPrefix + input, externalAllowed: true });
     
     // Step D: Write AI Response to CRDT and Broadcast
     sharedChat.push([{ sender: aiResp.routed_to, text: aiResp.text, type: 'ai' }]);

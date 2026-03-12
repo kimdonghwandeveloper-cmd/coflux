@@ -1,12 +1,11 @@
 import { useState, useEffect, useCallback } from 'react';
-import { webrtcClient } from '../lib/webrtc_client';
 import { listen, UnlistenFn } from '@tauri-apps/api/event';
 import { BlockNoteView } from "@blocknote/mantine";
 import { useCreateBlockNote, SuggestionMenuController, getDefaultReactSlashMenuItems } from "@blocknote/react";
 import { filterSuggestionItems } from "@blocknote/core/extensions";
 import "@blocknote/mantine/style.css";
 import { PageData } from '../App';
-import { Image as ImageIcon, Wifi } from 'lucide-react';
+import { Image as ImageIcon } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import * as Y from 'yjs';
 import { Awareness } from 'y-protocols/awareness';
@@ -16,14 +15,56 @@ import EmojiPicker, { Theme as EmojiTheme } from 'emoji-picker-react';
 import { RiFileLine } from 'react-icons/ri';
 
 // Sub-component wrapper because `useCreateBlockNote` hook depends on provider
-const CollaborativeEditor = ({ provider, currentTheme, onAddSubPage }: { provider: any, currentTheme: 'light' | 'dark', onAddSubPage: () => void }) => {
+const CollaborativeEditor = ({ provider, currentTheme, onAddSubPage, pageId }: { provider: any, currentTheme: 'light' | 'dark', onAddSubPage: () => void, pageId: string }) => {
+
+  // Custom upload handler: save images to Rust DB and return a retrievable URL
+  const uploadFile = useCallback(async (file: File): Promise<string> => {
+    return new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onload = async () => {
+        const base64 = reader.result as string;
+        const assetId = `asset_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+        try {
+          await invoke('save_asset', { id: assetId, pageId, data: base64, mimeType: file.type });
+        } catch (e) { console.error("Failed to save asset:", e); }
+        // Return the base64 data URL directly (it's stored in DB for persistence via Yjs)
+        resolve(base64);
+      };
+      reader.readAsDataURL(file);
+    });
+  }, [pageId]);
+
   const editor = useCreateBlockNote({
     collaboration: {
       provider,
       fragment: provider.doc.getXmlFragment("blocknote"),
       user: { name: "Coflux User", color: "#2e2e2e" }
-    }
+    },
+    uploadFile
   });
+
+  // Yjs UndoManager for Ctrl+Z / Ctrl+Y (ProseMirror history is disabled in collab mode)
+  useEffect(() => {
+    const fragment = provider.doc.getXmlFragment("blocknote");
+    const undoManager = new Y.UndoManager(fragment);
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.ctrlKey && e.key === 'z' && !e.shiftKey) {
+        e.preventDefault();
+        undoManager.undo();
+      }
+      if ((e.ctrlKey && e.key === 'y') || (e.ctrlKey && e.shiftKey && e.key === 'z') || (e.ctrlKey && e.shiftKey && e.key === 'Z')) {
+        e.preventDefault();
+        undoManager.redo();
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+      undoManager.destroy();
+    };
+  }, [provider]);
 
   const getCustomSlashMenuItems = useCallback((ed: any) => {
     const defaults = getDefaultReactSlashMenuItems(ed);
@@ -64,13 +105,9 @@ export const Canvas = ({
   onAddSubPage: () => void,
   onNavigateToPage: (id: string) => void
 }) => {
-  const [offer, setOffer] = useState('');
-  const [connState, setConnState] = useState('Disconnected');
-  const [copied, setCopied] = useState(false);
-  const [showNetwork, setShowNetwork] = useState(false);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
-  
   const [provider, setProvider] = useState<any>(null);
+  const [awarenessUsers, setAwarenessUsers] = useState<number>(1);
 
   // Initialize Y.Doc directly from SQLite Rust Database (Local Persistence)
   useEffect(() => {
@@ -95,6 +132,19 @@ export const Canvas = ({
       });
       
       const awareness = new Awareness(ydoc);
+      // Set local user info for Awareness (#3: Member display)
+      awareness.setLocalStateField('user', {
+        name: 'Coflux User',
+        color: '#2e2e2e'
+      });
+      // Track active users
+      const updateUsers = () => {
+        const states = awareness.getStates();
+        setAwarenessUsers(states.size);
+      };
+      awareness.on('change', updateUsers);
+      updateUsers();
+
       setProvider({ doc: ydoc, awareness });
     };
     
@@ -112,9 +162,7 @@ export const Canvas = ({
         unlisten = await listen<string>('webrtc-message', (event) => {
           console.log("Received from P2P:", event.payload);
         });
-        unlistenConn = await listen<string>('webrtc-state', (event) => {
-          setConnState(event.payload);
-        });
+        unlistenConn = await listen<string>('webrtc-state', () => {});
       } catch {}
     })();
 
@@ -204,7 +252,7 @@ export const Canvas = ({
         </div>
 
         <div style={{ marginLeft: '-50px', flex: 1, display: 'flex', flexDirection: 'column' }}>
-          {provider ? <CollaborativeEditor provider={provider} currentTheme={currentTheme} onAddSubPage={onAddSubPage} /> : <div>Loading page data...</div>}
+          {provider ? <CollaborativeEditor provider={provider} currentTheme={currentTheme} onAddSubPage={onAddSubPage} pageId={activePage.id} /> : <div>Loading page data...</div>}
         </div>
 
         {/* Child Pages displayed as clickable Notion-style links */}
