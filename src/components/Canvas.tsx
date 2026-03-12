@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { webrtcClient } from '../lib/webrtc_client';
 import { listen, UnlistenFn } from '@tauri-apps/api/event';
 import { BlockNoteView } from "@blocknote/mantine";
 import { useCreateBlockNote, SuggestionMenuController, getDefaultReactSlashMenuItems } from "@blocknote/react";
@@ -109,6 +110,10 @@ export const Canvas = ({
   const [provider, setProvider] = useState<any>(null);
   const [awarenessUsers, setAwarenessUsers] = useState<number>(1);
   const [connState, setConnState] = useState('Disconnected');
+  const [offer, setOffer] = useState('');
+  const [copied, setCopied] = useState(false);
+  const [showNetwork, setShowNetwork] = useState(false);
+  const [remoteSdp, setRemoteSdp] = useState('');
 
   // Initialize Y.Doc directly from SQLite Rust Database (Local Persistence)
   useEffect(() => {
@@ -206,10 +211,86 @@ export const Canvas = ({
 
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'auto', position: 'relative' }}>
-      {/* P2P Connection Status */}
-      <div style={{ position: 'fixed', bottom: '20px', right: '20px', zIndex: 50, display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 12px', borderRadius: '20px', background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', boxShadow: '0 2px 8px rgba(0,0,0,0.08)', fontSize: '12px', color: 'var(--text-secondary)' }}>
-        <Wifi size={14} color={connState === 'Connected!' ? '#22c55e' : 'var(--text-secondary)'} />
-        <span>{connState === 'Connected!' ? 'P2P Connected' : 'Local'}</span>
+      {/* P2P Connection Status Pill + Network Panel */}
+      <div style={{ position: 'fixed', bottom: '20px', right: '20px', zIndex: 50 }}>
+        <div onClick={() => setShowNetwork(!showNetwork)}
+          style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 12px', borderRadius: '20px', background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', boxShadow: '0 2px 8px rgba(0,0,0,0.08)', fontSize: '12px', color: 'var(--text-secondary)', cursor: 'pointer' }}>
+          <Wifi size={14} color={connState === 'Connected!' ? '#22c55e' : 'var(--text-secondary)'} />
+          <span>{connState === 'Connected!' ? 'P2P Connected' : 'Local'}</span>
+        </div>
+
+        {showNetwork && (
+          <div style={{ position: 'absolute', bottom: '40px', right: 0, width: '320px', background: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '10px', boxShadow: '0 4px 16px rgba(0,0,0,0.12)', padding: '16px', display: 'flex', flexDirection: 'column', gap: '10px', animation: 'slideUpFade 0.15s ease-out forwards' }}>
+            <div style={{ fontSize: '14px', fontWeight: 600 }}>P2P Connection</div>
+            <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
+              Status: <span style={{ color: connState === 'Connected!' ? '#22c55e' : 'var(--error)' }}>{connState}</span>
+            </div>
+
+            {/* Step 1: Generate Offer */}
+            <div style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Step 1: Create Offer</div>
+            <button className="notion-btn" style={{ width: '100%', justifyContent: 'center', fontSize: '12px' }}
+              onClick={async () => {
+                try {
+                  const o = await webrtcClient.generateOffer();
+                  setOffer(o);
+                } catch (e) { console.error(e); }
+              }}>
+              Generate Offer
+            </button>
+
+            {offer && (
+              <>
+                <textarea readOnly value={offer}
+                  style={{ width: '100%', height: '50px', fontSize: '9px', padding: '6px', borderRadius: '4px', border: '1px solid var(--border-color)', background: 'var(--bg-secondary)', color: 'var(--text-primary)', resize: 'none', fontFamily: 'monospace' }} />
+                <button className="notion-btn" style={{ width: '100%', justifyContent: 'center', fontSize: '12px' }}
+                  onClick={() => { navigator.clipboard.writeText(offer); setCopied(true); setTimeout(() => setCopied(false), 2000); }}>
+                  {copied ? '✓ Copied!' : 'Copy to Clipboard'}
+                </button>
+              </>
+            )}
+
+            {/* Step 2: Accept Remote SDP */}
+            <div style={{ height: '1px', background: 'var(--border-color)', margin: '2px 0' }} />
+            <div style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Step 2: Accept Remote SDP</div>
+            
+            <textarea 
+              value={remoteSdp}
+              onChange={e => setRemoteSdp(e.target.value)}
+              placeholder="Paste the other peer's Offer or Answer SDP here..."
+              style={{ width: '100%', height: '60px', fontSize: '9px', padding: '6px', borderRadius: '4px', border: '1px solid var(--border-color)', background: 'var(--bg-secondary)', color: 'var(--text-primary)', resize: 'none', fontFamily: 'monospace' }} />
+            
+            <button className="notion-btn primary" style={{ width: '100%', justifyContent: 'center', fontSize: '12px' }}
+              onClick={async () => {
+                const sdp = remoteSdp.trim();
+                if (!sdp) return;
+                try {
+                  if (sdp.startsWith('{')) {
+                    const parsed = JSON.parse(sdp);
+                    if (parsed.type === 'offer') {
+                      const answer = await webrtcClient.acceptOffer(sdp);
+                      setOffer(answer);
+                      setRemoteSdp('');
+                    } else if (parsed.type === 'answer') {
+                      await webrtcClient.acceptAnswer(sdp);
+                      setRemoteSdp('');
+                    }
+                  }
+                } catch (e) { console.error(e); }
+              }}>
+              Apply Pasted SDP
+            </button>
+
+            <button className="notion-btn" style={{ width: '100%', justifyContent: 'center', fontSize: '11px', opacity: 0.7 }}
+              onClick={async () => {
+                try {
+                  const clipSdp = await webrtcClient.readClipboardSdp();
+                  setRemoteSdp(clipSdp);
+                } catch (e) { console.error(e); }
+              }}>
+              Read from Clipboard
+            </button>
+          </div>
+        )}
       </div>
       {/* Cover Image Area */}
       {activePage.coverImage ? (
