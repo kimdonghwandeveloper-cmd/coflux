@@ -37,6 +37,7 @@ function App() {
   const [activeWorkspaceId, setActiveWorkspaceId] = useState<string | null>(null);
   const [pages, setPages] = useState<PageData[]>([]);
   const [activePageId, setActivePageId] = useState<string | null>(null);
+  const [memberCount, setMemberCount] = useState(1);
 
   // Search state
   const [searchQuery, setSearchQuery] = useState('');
@@ -217,7 +218,7 @@ function App() {
           <div style={{ display: 'flex', alignItems: 'center', gap: '20px', color: 'var(--text-secondary)', fontSize: '14px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
               <Users size={16} />
-              <span>3 members</span>
+              <span>{memberCount} {memberCount === 1 ? 'member' : 'members'}</span>
             </div>
             <Bell size={18} style={{ cursor: 'pointer' }} />
             <button className="notion-btn" style={{ border: 'none', background: 'transparent', gap: '6px', color: chatOpen ? 'var(--accent)' : 'var(--text-primary)' }} onClick={() => setChatOpen(!chatOpen)}>
@@ -254,6 +255,8 @@ function App() {
               } catch (e) { console.error(e); }
             }}
             onNavigateToPage={(id: string) => setActivePageId(id)}
+            onUserCountChange={setMemberCount}
+            memberCount={memberCount}
           />
         )}
       </div>

@@ -97,18 +97,21 @@ export const Canvas = ({
   onUpdatePage,
   childPages,
   onAddSubPage,
-  onNavigateToPage
+  onNavigateToPage,
+  onUserCountChange,
+  memberCount
 }: { 
   currentTheme: 'light' | 'dark',
   activePage: PageData,
   onUpdatePage: (p: PageData) => void,
   childPages: PageData[],
   onAddSubPage: () => void,
-  onNavigateToPage: (id: string) => void
+  onNavigateToPage: (id: string) => void,
+  onUserCountChange?: (count: number) => void,
+  memberCount: number
 }) => {
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [provider, setProvider] = useState<any>(null);
-  const [awarenessUsers, setAwarenessUsers] = useState<number>(1);
   const [connState, setConnState] = useState('Disconnected');
   const [offer, setOffer] = useState('');
   const [copied, setCopied] = useState(false);
@@ -146,7 +149,7 @@ export const Canvas = ({
       // Track active users
       const updateUsers = () => {
         const states = awareness.getStates();
-        setAwarenessUsers(states.size);
+        if (onUserCountChange) onUserCountChange(states.size);
       };
       awareness.on('change', updateUsers);
       updateUsers();
@@ -338,10 +341,10 @@ export const Canvas = ({
         
         <div style={{ fontSize: '13px', color: 'var(--text-secondary)', marginBottom: '32px', display: 'flex', alignItems: 'center', gap: '12px' }}>
           <span>Updated {activePage.updatedAt}</span>
-          {awarenessUsers > 1 && (
+          {memberCount > 1 && (
             <div style={{ display: 'flex', alignItems: 'center', gap: '4px', background: 'var(--accent)', color: '#fff', padding: '2px 8px', borderRadius: '12px', fontSize: '11px', fontWeight: 600 }}>
               <div style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#fff', animation: 'pulse 2s infinite' }} />
-              {awarenessUsers} members active
+              {memberCount} members active
             </div>
           )}
         </div>
