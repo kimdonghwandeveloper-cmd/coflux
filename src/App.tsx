@@ -6,6 +6,13 @@ import { Menu, Search, Users, Bell, Sparkles } from 'lucide-react';
 import { AiChatWidget } from './components/AiChatWidget';
 import { invoke } from '@tauri-apps/api/core';
 
+export interface WorkspaceData {
+  id: string;
+  name: string;
+  icon: string;
+  createdAt: string;
+}
+
 export interface PageData {
   id: string;
   title: string;
@@ -13,6 +20,8 @@ export interface PageData {
   updatedAt: string;
   coverImage?: string | null;
   isFavorite?: boolean | null;
+  workspaceId?: string | null;
+  parentId?: string | null;
 }
 
 function App() {
@@ -20,50 +29,82 @@ function App() {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [chatOpen, setChatOpen] = useState(false);
 
+  const [workspaces, setWorkspaces] = useState<WorkspaceData[]>([]);
+  const [activeWorkspaceId, setActiveWorkspaceId] = useState<string | null>(null);
   const [pages, setPages] = useState<PageData[]>([]);
   const [activePageId, setActivePageId] = useState<string | null>(null);
 
-  // Load from SQLite DB on mount
+  // Load workspaces and pages from SQLite DB on mount
   useEffect(() => {
-    async function loadPages() {
+    async function loadData() {
       try {
+        const loadedWs: WorkspaceData[] = await invoke('get_workspaces');
+        setWorkspaces(loadedWs);
+        const wsId = loadedWs.length > 0 ? loadedWs[0].id : 'default';
+        setActiveWorkspaceId(wsId);
+
         const loadedPages: PageData[] = await invoke('get_pages');
-        if (loadedPages.length === 0) {
-          // Initialize default workspace if empty
-          const defaultPage = { id: '1', title: 'Getting Started', icon: '🚀', updatedAt: new Date().toLocaleDateString(), coverImage: null, isFavorite: false };
+        setPages(loadedPages);
+
+        const wsPages = loadedPages.filter(p => (p.workspaceId || 'default') === wsId);
+        if (wsPages.length === 0) {
+          const defaultPage: PageData = { id: '1', title: 'Getting Started', icon: '🚀', updatedAt: new Date().toLocaleDateString(), coverImage: null, isFavorite: false, workspaceId: wsId, parentId: null };
           await invoke('save_page', { page: defaultPage });
-          setPages([defaultPage]);
+          setPages([...loadedPages, defaultPage]);
           setActivePageId('1');
         } else {
-          setPages(loadedPages);
-          setActivePageId(loadedPages[0].id);
+          setActivePageId(wsPages[0].id);
         }
       } catch (e) {
-        console.error("Failed to load pages from DB:", e);
-        // Fallback so the app doesn't white-screen if the DB fails
-        setPages([{ id: '1', title: 'Error Loading DB', icon: '⚠️', updatedAt: new Date().toLocaleDateString(), coverImage: null, isFavorite: false }]);
+        console.error("Failed to load from DB:", e);
+        setPages([{ id: '1', title: 'Error Loading DB', icon: '⚠️', updatedAt: new Date().toLocaleDateString(), coverImage: null, isFavorite: false, workspaceId: 'default', parentId: null }]);
         setActivePageId('1');
       }
     }
-    loadPages();
+    loadData();
   }, []);
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
   }, [theme]);
 
+  // Filter pages for the active workspace
+  const workspacePages = pages.filter(p => (p.workspaceId || 'default') === activeWorkspaceId);
+
+  const handleSwitchWorkspace = (wsId: string) => {
+    setActiveWorkspaceId(wsId);
+    const wsPages = pages.filter(p => (p.workspaceId || 'default') === wsId);
+    if (wsPages.length > 0) {
+      setActivePageId(wsPages[0].id);
+    } else {
+      setActivePageId(null);
+    }
+  };
+
   return (
     <div className="app-container">
-      {sidebarOpen && activePageId && (
+      {sidebarOpen && (
         <Sidebar 
           theme={theme} 
           toggleTheme={() => setTheme(t => t === 'light' ? 'dark' : 'light')} 
-          pages={pages}
-          activePageId={activePageId}
+          pages={workspacePages}
+          activePageId={activePageId || ''}
           setActivePageId={setActivePageId}
+          workspaces={workspaces}
+          activeWorkspaceId={activeWorkspaceId || 'default'}
+          onSwitchWorkspace={handleSwitchWorkspace}
+          onAddWorkspace={async (name: string) => {
+            const newId = Date.now().toString();
+            const ws: WorkspaceData = { id: newId, name, icon: name.charAt(0).toUpperCase(), createdAt: new Date().toLocaleDateString() };
+            try {
+              await invoke('save_workspace', { workspace: ws });
+              setWorkspaces([...workspaces, ws]);
+              handleSwitchWorkspace(newId);
+            } catch (e) { console.error(e); }
+          }}
           onAddPage={async () => {
             const newId = Date.now().toString();
-            const newPage = { id: newId, title: 'Untitled', icon: '📄', updatedAt: new Date().toLocaleDateString(), coverImage: null, isFavorite: false };
+            const newPage: PageData = { id: newId, title: 'Untitled', icon: '📄', updatedAt: new Date().toLocaleDateString(), coverImage: null, isFavorite: false, workspaceId: activeWorkspaceId, parentId: null };
             try {
               await invoke('save_page', { page: newPage });
               setPages([...pages, newPage]);
@@ -79,16 +120,22 @@ function App() {
           onDeletePage={async (id: string) => {
             try {
               await invoke('delete_page', { pageId: id });
-              const newPages = pages.filter(p => p.id !== id);
+              // Cascade: remove from local state too (backend already cascades)
+              const deletedIds = new Set<string>();
+              const collectChildren = (pid: string) => { deletedIds.add(pid); pages.filter(p => p.parentId === pid).forEach(c => collectChildren(c.id)); };
+              collectChildren(id);
+              const newPages = pages.filter(p => !deletedIds.has(p.id));
               setPages(newPages);
-              if (activePageId === id && newPages.length > 0) setActivePageId(newPages[0].id);
+              if (deletedIds.has(activePageId || '')) {
+                const remaining = newPages.filter(p => (p.workspaceId || 'default') === activeWorkspaceId);
+                setActivePageId(remaining.length > 0 ? remaining[0].id : null);
+              }
             } catch (e) { console.error(e); }
           }}
         />
       )}
 
       <div className="main-content">
-        {/* Figma Top Bar */}
         <div className="top-bar">
           <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
             {!sidebarOpen && (
@@ -123,7 +170,6 @@ function App() {
           </div>
         </div>
 
-        {/* Floating AI Chat Overlay */}
         {chatOpen && (
           <div style={{ position: 'absolute', top: '70px', right: '24px', zIndex: 100, width: '360px', height: '500px', background: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '12px', boxShadow: '0 8px 30px rgba(0,0,0,0.12)', display: 'flex', flexDirection: 'column', overflow: 'hidden', animation: 'slideUpFade 0.3s ease-out forwards' }}>
             <AiChatWidget connState="Connected!" />
@@ -140,6 +186,17 @@ function App() {
                 setPages(pages.map(p => p.id === updated.id ? updated : p));
               } catch (e) { console.error(e); }
             }}
+            childPages={pages.filter(p => p.parentId === activePageId)}
+            onAddSubPage={async () => {
+              const newId = Date.now().toString();
+              const newPage: PageData = { id: newId, title: 'Untitled', icon: '📄', updatedAt: new Date().toLocaleDateString(), coverImage: null, isFavorite: false, workspaceId: activeWorkspaceId, parentId: activePageId };
+              try {
+                await invoke('save_page', { page: newPage });
+                setPages([...pages, newPage]);
+                setActivePageId(newId);
+              } catch (e) { console.error(e); }
+            }}
+            onNavigateToPage={(id: string) => setActivePageId(id)}
           />
         )}
       </div>

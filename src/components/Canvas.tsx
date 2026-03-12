@@ -5,7 +5,7 @@ import { BlockNoteView } from "@blocknote/mantine";
 import { useCreateBlockNote } from "@blocknote/react";
 import "@blocknote/mantine/style.css";
 import { PageData } from '../App';
-import { Image as ImageIcon, Wifi } from 'lucide-react';
+import { Image as ImageIcon, Wifi, Plus } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import * as Y from 'yjs';
 import { Awareness } from 'y-protocols/awareness';
@@ -29,11 +29,17 @@ const CollaborativeEditor = ({ provider, currentTheme }: { provider: any, curren
 export const Canvas = ({ 
   currentTheme, 
   activePage, 
-  onUpdatePage 
+  onUpdatePage,
+  childPages,
+  onAddSubPage,
+  onNavigateToPage
 }: { 
   currentTheme: 'light' | 'dark',
   activePage: PageData,
-  onUpdatePage: (p: PageData) => void
+  onUpdatePage: (p: PageData) => void,
+  childPages: PageData[],
+  onAddSubPage: () => void,
+  onNavigateToPage: (id: string) => void
 }) => {
   const [offer, setOffer] = useState('');
   const [connState, setConnState] = useState('Disconnected');
@@ -313,6 +319,55 @@ export const Canvas = ({
         <div style={{ marginLeft: '-50px', flex: 1, display: 'flex', flexDirection: 'column' }}>
           {provider ? <CollaborativeEditor provider={provider} currentTheme={currentTheme} /> : <div>Loading page data...</div>}
         </div>
+
+        {/* Child Pages Section (Notion-style inline page links) */}
+        {(childPages.length > 0 || true) && (
+          <div style={{ marginTop: '16px', paddingTop: '8px' }}>
+            {childPages.map(child => (
+              <div 
+                key={child.id}
+                onClick={() => onNavigateToPage(child.id)}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  padding: '6px 8px',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  color: 'var(--text-secondary)',
+                  fontSize: '14px',
+                  transition: 'background 0.1s',
+                }}
+                onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg-secondary)')}
+                onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+              >
+                <span style={{ fontSize: '15px' }}>{child.icon}</span>
+                <span style={{ borderBottom: '1px solid var(--text-secondary)', paddingBottom: '1px' }}>{child.title || 'Untitled'}</span>
+              </div>
+            ))}
+            
+            <div 
+              onClick={onAddSubPage}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                padding: '6px 8px',
+                borderRadius: '4px',
+                cursor: 'pointer',
+                color: 'var(--text-secondary)',
+                fontSize: '13px',
+                transition: 'background 0.1s',
+                marginTop: '4px'
+              }}
+              onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg-secondary)')}
+              onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+            >
+              <Plus size={14} />
+              <span>Add a page</span>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

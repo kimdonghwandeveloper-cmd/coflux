@@ -59,7 +59,10 @@ pub fn run() {
             db_core::save_page,
             db_core::delete_page,
             db_core::save_yjs_update,
-            db_core::get_yjs_updates
+            db_core::get_yjs_updates,
+            db_core::get_workspaces,
+            db_core::save_workspace,
+            db_core::delete_workspace
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
