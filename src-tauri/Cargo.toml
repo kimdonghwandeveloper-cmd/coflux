@@ -28,4 +28,6 @@ arboard = "3.6.1"
 lazy_static = "1.5.0"
 rdev = "0.5.3"
 rusqlite = { version = "0.38.0", features = ["bundled"] }
+tauri-plugin-dialog = "2"
+tauri-plugin-fs = "2"
 

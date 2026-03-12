@@ -1,8 +1,8 @@
 use lazy_static::lazy_static;
 use rdev::{listen, Event};
 use std::sync::Mutex;
-use std::time::Instant;
 use std::thread;
+use std::time::Instant;
 
 lazy_static! {
     // Thread-safe generic instant to track when the user last moved mouse/keyboard

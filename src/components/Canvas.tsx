@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { webrtcClient } from '../lib/webrtc_client';
 import { listen, UnlistenFn } from '@tauri-apps/api/event';
 import { BlockNoteView } from "@blocknote/mantine";
@@ -9,6 +9,9 @@ import { Trash2, Image as ImageIcon, Wifi } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import * as Y from 'yjs';
 import { Awareness } from 'y-protocols/awareness';
+import { open } from '@tauri-apps/plugin-dialog';
+import { readFile } from '@tauri-apps/plugin-fs';
+import EmojiPicker, { Theme as EmojiTheme } from 'emoji-picker-react';
 
 // Sub-component wrapper because `useCreateBlockNote` hook depends on provider
 const CollaborativeEditor = ({ provider, currentTheme }: { provider: any, currentTheme: 'light' | 'dark' }) => {
@@ -38,6 +41,7 @@ export const Canvas = ({
   const [connState, setConnState] = useState('Disconnected');
   const [copied, setCopied] = useState(false);
   const [showNetwork, setShowNetwork] = useState(false);
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   
   const [provider, setProvider] = useState<any>(null);
 
@@ -134,13 +138,64 @@ export const Canvas = ({
   };
   const handleAcceptOffer = async () => {
     const sdpText = await webrtcClient.readClipboardSdp();
-    await webrtcClient.acceptOffer(sdpText);
+    const answerSdp = await webrtcClient.acceptOffer(sdpText);
+    setOffer(answerSdp);
     setCopied(true); setTimeout(() => setCopied(false), 2000);
   };
   const handleAcceptAnswer = async () => {
     const sdpText = await webrtcClient.readClipboardSdp();
     await webrtcClient.acceptAnswer(sdpText);
     setConnState('Connected!');
+  };
+
+  const handleAddCover = async () => {
+    try {
+      const selectedPath = await open({
+        multiple: false,
+        filters: [{
+          name: 'Image',
+          extensions: ['png', 'jpeg', 'jpg', 'webp']
+        }]
+      });
+      
+      if (!selectedPath || typeof selectedPath !== 'string') return;
+
+      // Read raw bytes using plugin-fs
+      const fileBytes = await readFile(selectedPath);
+      
+      // Convert raw Uint8Array to Blob then Object URL
+      const blob = new Blob([fileBytes]);
+      const imageUrl = URL.createObjectURL(blob);
+
+      // Create an image element to resize it off-screen
+      const img = new Image();
+      img.onload = () => {
+         const maxWidth = 1200;
+         let width = img.width;
+         let height = img.height;
+         
+         if (width > maxWidth) {
+           height = Math.round((height * maxWidth) / width);
+           width = maxWidth;
+         }
+
+         const canvas = document.createElement('canvas');
+         canvas.width = width;
+         canvas.height = height;
+         const ctx = canvas.getContext('2d');
+         if (ctx) {
+            ctx.drawImage(img, 0, 0, width, height);
+            // Compress as JPEG to save SQLite space and P2P bandwidth
+            const compressedBase64 = canvas.toDataURL('image/jpeg', 0.82);
+            onUpdatePage({ ...activePage, coverImage: compressedBase64 });
+         }
+         URL.revokeObjectURL(imageUrl); // Free memory
+      };
+      img.src = imageUrl;
+      
+    } catch (e) {
+       console.error("Failed to set cover image:", e);
+    }
   };
 
   return (
@@ -166,9 +221,74 @@ export const Canvas = ({
         )}
       </div>
 
-      <div style={{ padding: '60px 80px 40px', maxWidth: '900px', margin: '0 auto' }}>
-        <div style={{ fontSize: '64px', marginBottom: '16px', lineHeight: 1 }}>{activePage.icon}</div>
+      {/* Notion-style Cover Banner Region */}
+      {activePage.coverImage && (
+        <div style={{ 
+          width: '100%', 
+          height: '240px', 
+          backgroundImage: `url(${activePage.coverImage})`,
+          backgroundSize: 'cover',
+          backgroundPosition: 'center',
+          position: 'relative'
+        }}>
+           <button 
+             className="notion-btn" 
+             onClick={handleAddCover}
+             style={{ position: 'absolute', bottom: '16px', right: '80px', background: 'rgba(255,255,255,0.8)', color: '#000', border: 'none', padding: '4px 8px', fontSize: '12px' }}
+           >
+             Change cover
+           </button>
+        </div>
+      )}
+
+      {/* When Cover Exists, pull the icon up to overlap */}
+      <div style={{ padding: activePage.coverImage ? '0 80px 40px' : '60px 80px 40px', maxWidth: '900px', margin: '0 auto' }}>
         
+        {/* Page Icon (Emoji) */}
+        <div style={{ position: 'relative' }}>
+          <div 
+              style={{ 
+                  fontSize: '78px', 
+                  marginBottom: '16px', 
+                  lineHeight: 1.1,
+                  marginTop: activePage.coverImage ? '-40px' : '0',
+                  position: 'relative',
+                  zIndex: 2,
+                  display: 'inline-block',
+                  cursor: 'pointer',
+                  filter: showEmojiPicker ? 'brightness(0.8)' : 'none',
+                  transition: 'filter 0.2s',
+                  userSelect: 'none'
+              }}
+              onClick={() => setShowEmojiPicker(!showEmojiPicker)}
+          >
+              {activePage.icon}
+          </div>
+
+          {/* Emoji Picker Popover */}
+          {showEmojiPicker && (
+            <div style={{ position: 'absolute', top: '100%', left: 0, zIndex: 100, boxShadow: '0 8px 30px rgba(0,0,0,0.15)', borderRadius: '12px' }}>
+              <EmojiPicker 
+                theme={currentTheme === 'dark' ? EmojiTheme.DARK : EmojiTheme.LIGHT}
+                onEmojiClick={(emojiData) => {
+                  onUpdatePage({ ...activePage, icon: emojiData.emoji });
+                  setShowEmojiPicker(false);
+                }}
+              />
+            </div>
+          )}
+        </div>
+
+        {/* Action Controls (Add cover, icon...) */}
+        {!activePage.coverImage && (
+          <div style={{ display: 'flex', gap: '8px', marginBottom: '16px', opacity: 0.6 }}>
+            <button className="notion-btn" onClick={handleAddCover} style={{ border: 'none', background: 'transparent', color: 'var(--text-secondary)', padding: '4px 0', fontSize: '13px' }}>
+              <ImageIcon size={14} style={{ marginRight: '4px' }} /> Add cover
+            </button>
+          </div>
+        )}
+        
+        {/* Title Input */}
         <input 
           value={activePage.title}
           onChange={e => onUpdatePage({...activePage, title: e.target.value})}
@@ -199,11 +319,8 @@ export const Canvas = ({
           paddingBottom: '12px',
           gap: '16px'
         }}>
-          <button className="notion-btn" style={{ border: 'none', background: 'transparent', color: 'var(--text-secondary)', padding: '4px 0' }}>
-            <ImageIcon size={16} /> Add image
-          </button>
           <button className="notion-btn" onClick={() => onDeletePage(activePage.id)} style={{ border: 'none', background: 'transparent', color: 'var(--error)', padding: '4px 0' }}>
-            <Trash2 size={16} /> Delete
+            <Trash2 size={16} /> Delete Page
           </button>
         </div>
 

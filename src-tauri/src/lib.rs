@@ -1,21 +1,31 @@
 mod clipboard_sync;
-mod os_hooks;
-mod webrtc_core;
 mod db_core;
+mod os_hooks;
 mod security;
+mod webrtc_core;
 
 #[tauri::command]
-async fn generate_offer(app_handle: tauri::AppHandle, state: tauri::State<'_, webrtc_core::WebRtcState>) -> Result<String, String> {
+async fn generate_offer(
+    app_handle: tauri::AppHandle,
+    state: tauri::State<'_, webrtc_core::WebRtcState>,
+) -> Result<String, String> {
     webrtc_core::generate_offer(app_handle, state).await
 }
 
 #[tauri::command]
-async fn accept_offer(app_handle: tauri::AppHandle, state: tauri::State<'_, webrtc_core::WebRtcState>, offer_sdp: String) -> Result<String, String> {
+async fn accept_offer(
+    app_handle: tauri::AppHandle,
+    state: tauri::State<'_, webrtc_core::WebRtcState>,
+    offer_sdp: String,
+) -> Result<String, String> {
     webrtc_core::accept_offer(app_handle, state, offer_sdp).await
 }
 
 #[tauri::command]
-async fn accept_answer(state: tauri::State<'_, webrtc_core::WebRtcState>, answer_sdp: String) -> Result<(), String> {
+async fn accept_answer(
+    state: tauri::State<'_, webrtc_core::WebRtcState>,
+    answer_sdp: String,
+) -> Result<(), String> {
     webrtc_core::accept_answer(state, answer_sdp).await
 }
 
@@ -27,11 +37,13 @@ fn read_clipboard_sdp() -> Result<String, String> {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_fs::init())
+        .plugin(tauri_plugin_dialog::init())
         .manage(webrtc_core::WebRtcState::new())
         .plugin(tauri_plugin_opener::init())
-        .setup(|_app| {
+        .setup(|app| {
             os_hooks::start_os_listener();
-            if let Err(e) = db_core::init_db() {
+            if let Err(e) = db_core::init_db(app.handle()) {
                 eprintln!("Failed to init SQLite: {}", e);
             }
             Ok(())
