@@ -5,7 +5,7 @@ import { useCreateBlockNote, SuggestionMenuController, getDefaultReactSlashMenuI
 import { filterSuggestionItems } from "@blocknote/core/extensions";
 import "@blocknote/mantine/style.css";
 import { PageData } from '../App';
-import { Image as ImageIcon } from 'lucide-react';
+import { Image as ImageIcon, Wifi } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import * as Y from 'yjs';
 import { Awareness } from 'y-protocols/awareness';
@@ -108,6 +108,7 @@ export const Canvas = ({
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [provider, setProvider] = useState<any>(null);
   const [awarenessUsers, setAwarenessUsers] = useState<number>(1);
+  const [connState, setConnState] = useState('Disconnected');
 
   // Initialize Y.Doc directly from SQLite Rust Database (Local Persistence)
   useEffect(() => {
@@ -162,7 +163,9 @@ export const Canvas = ({
         unlisten = await listen<string>('webrtc-message', (event) => {
           console.log("Received from P2P:", event.payload);
         });
-        unlistenConn = await listen<string>('webrtc-state', () => {});
+        unlistenConn = await listen<string>('webrtc-state', (event) => {
+          setConnState(event.payload);
+        });
       } catch {}
     })();
 
@@ -203,6 +206,11 @@ export const Canvas = ({
 
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'auto', position: 'relative' }}>
+      {/* P2P Connection Status */}
+      <div style={{ position: 'fixed', bottom: '20px', right: '20px', zIndex: 50, display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 12px', borderRadius: '20px', background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', boxShadow: '0 2px 8px rgba(0,0,0,0.08)', fontSize: '12px', color: 'var(--text-secondary)' }}>
+        <Wifi size={14} color={connState === 'Connected!' ? '#22c55e' : 'var(--text-secondary)'} />
+        <span>{connState === 'Connected!' ? 'P2P Connected' : 'Local'}</span>
+      </div>
       {/* Cover Image Area */}
       {activePage.coverImage ? (
         <div style={{ position: 'relative', width: '100%', height: '200px', flexShrink: 0 }}>
@@ -247,8 +255,14 @@ export const Canvas = ({
           style={{ fontSize: '40px', fontWeight: 700, margin: '0 0 12px 0', letterSpacing: '-0.02em', outline: 'none', color: 'var(--text-primary)', background: 'transparent', border: 'none', width: '100%', fontFamily: 'inherit' }} 
         />
         
-        <div style={{ fontSize: '13px', color: 'var(--text-secondary)', marginBottom: '32px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-           Updated {activePage.updatedAt}
+        <div style={{ fontSize: '13px', color: 'var(--text-secondary)', marginBottom: '32px', display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <span>Updated {activePage.updatedAt}</span>
+          {awarenessUsers > 1 && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '4px', background: 'var(--accent)', color: '#fff', padding: '2px 8px', borderRadius: '12px', fontSize: '11px', fontWeight: 600 }}>
+              <div style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#fff', animation: 'pulse 2s infinite' }} />
+              {awarenessUsers} members active
+            </div>
+          )}
         </div>
 
         <div style={{ marginLeft: '-50px', flex: 1, display: 'flex', flexDirection: 'column' }}>
