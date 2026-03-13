@@ -3,18 +3,37 @@ use rdev::{listen, Event};
 use std::sync::Mutex;
 use std::thread;
 use std::time::Instant;
+use tauri::Emitter;
 
 lazy_static! {
     // Thread-safe generic instant to track when the user last moved mouse/keyboard
     static ref LAST_ACTIVITY: Mutex<Instant> = Mutex::new(Instant::now());
 }
 
-pub fn start_os_listener() {
+pub fn start_os_listener(app_handle: tauri::AppHandle) {
     thread::spawn(|| {
         println!("Starting global OS event listener...");
         // This blocks the spawned thread and listens for all OS events
         if let Err(error) = listen(callback) {
             println!("rdev listener error: {:?}", error);
+        }
+    });
+
+    // Emit "user-status-changed" event whenever Active/Away transitions occur.
+    // Polled every 2s to avoid busy-looping; threshold matches get_user_status (10s).
+    thread::spawn(move || {
+        let mut last_emitted = String::new();
+        loop {
+            thread::sleep(std::time::Duration::from_secs(2));
+            let current = if let Ok(last) = LAST_ACTIVITY.lock() {
+                if last.elapsed().as_secs() > 10 { "Away" } else { "Active" }
+            } else {
+                continue;
+            };
+            if current != last_emitted {
+                last_emitted = current.to_string();
+                let _ = app_handle.emit("user-status-changed", current);
+            }
         }
     });
 }

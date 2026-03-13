@@ -3,6 +3,7 @@ mod db_core;
 mod os_hooks;
 mod security;
 mod webrtc_core;
+mod workflows;
 
 #[tauri::command]
 async fn generate_offer(
@@ -42,9 +43,12 @@ pub fn run() {
         .manage(webrtc_core::WebRtcState::new())
         .plugin(tauri_plugin_opener::init())
         .setup(|app| {
-            os_hooks::start_os_listener();
+            os_hooks::start_os_listener(app.handle().clone());
             if let Err(e) = db_core::init_db(app.handle()) {
                 eprintln!("Failed to init SQLite: {}", e);
+            }
+            if let Err(e) = workflows::init_workflow_tables() {
+                eprintln!("Failed to init workflow tables: {}", e);
             }
             Ok(())
         })
@@ -66,7 +70,12 @@ pub fn run() {
             db_core::save_workspace,
             db_core::delete_workspace,
             db_core::save_asset,
-            db_core::get_asset
+            db_core::get_asset,
+            workflows::get_workflows,
+            workflows::save_workflow,
+            workflows::delete_workflow,
+            workflows::log_workflow_execution,
+            workflows::get_workflow_logs
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
