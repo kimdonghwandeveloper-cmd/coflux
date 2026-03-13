@@ -1,6 +1,7 @@
 mod clipboard_sync;
 mod db_core;
 mod os_hooks;
+mod script_storage;
 mod security;
 mod webrtc_core;
 mod workflows;
@@ -50,6 +51,9 @@ pub fn run() {
             if let Err(e) = workflows::init_workflow_tables() {
                 eprintln!("Failed to init workflow tables: {}", e);
             }
+            if let Err(e) = script_storage::init_script_tables() {
+                eprintln!("Failed to init script tables: {}", e);
+            }
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -75,7 +79,14 @@ pub fn run() {
             workflows::save_workflow,
             workflows::delete_workflow,
             workflows::log_workflow_execution,
-            workflows::get_workflow_logs
+            workflows::get_workflow_logs,
+            webrtc_core::list_peers,
+            script_storage::get_user_scripts,
+            script_storage::save_user_script,
+            script_storage::delete_user_script,
+            script_storage::script_storage_get,
+            script_storage::script_storage_set,
+            script_storage::script_storage_delete
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

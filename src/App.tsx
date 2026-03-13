@@ -3,7 +3,9 @@ import './App.css';
 import { Canvas } from './components/Canvas';
 import { Sidebar } from './components/Sidebar';
 import { SettingsModal } from './components/SettingsModal';
-import { Menu, Search, Users, Bell, Sparkles } from 'lucide-react';
+import { WorkflowBuilderModal } from './components/WorkflowBuilder';
+import { ScriptEditorModal } from './components/ScriptEditor';
+import { Menu, Search, Users, Bell, Sparkles, Zap, Code2 } from 'lucide-react';
 import { AiChatWidget } from './components/AiChatWidget';
 import { invoke } from '@tauri-apps/api/core';
 
@@ -32,6 +34,8 @@ function App() {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [chatOpen, setChatOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [workflowsOpen, setWorkflowsOpen] = useState(false);
+  const [scriptEditorOpen, setScriptEditorOpen] = useState(false);
 
   const [workspaces, setWorkspaces] = useState<WorkspaceData[]>([]);
   const [activeWorkspaceId, setActiveWorkspaceId] = useState<string | null>(null);
@@ -104,9 +108,9 @@ function App() {
   return (
     <div className="app-container">
       {sidebarOpen && (
-        <Sidebar 
-          theme={theme} 
-          toggleTheme={() => setTheme(t => t === 'light' ? 'dark' : 'light')} 
+        <Sidebar
+          theme={theme}
+          toggleTheme={() => setTheme(t => t === 'light' ? 'dark' : 'light')}
           pages={workspacePages}
           trashedPages={trashedPages}
           activePageId={activePageId || ''}
@@ -190,10 +194,10 @@ function App() {
             <div ref={searchRef} style={{ position: 'relative' }}>
               <div className="search-container">
                 <Search size={16} color="var(--text-secondary)" />
-                <input 
-                  type="text" 
-                  className="search-input" 
-                  placeholder="Search..." 
+                <input
+                  type="text"
+                  className="search-input"
+                  placeholder="Search..."
                   value={searchQuery}
                   onChange={e => setSearchQuery(e.target.value)}
                   onFocus={() => setSearchFocused(true)}
@@ -221,6 +225,14 @@ function App() {
               <span>{memberCount} {memberCount === 1 ? 'member' : 'members'}</span>
             </div>
             <Bell size={18} style={{ cursor: 'pointer' }} />
+            <button className="notion-btn" style={{ border: 'none', background: 'transparent', gap: '6px', color: workflowsOpen ? 'var(--accent)' : 'var(--text-primary)' }} onClick={() => setWorkflowsOpen(!workflowsOpen)}>
+              <Zap size={16} fill={workflowsOpen ? 'currentColor' : 'none'} />
+              Workflows
+            </button>
+            <button className="notion-btn" style={{ border: 'none', background: 'transparent', gap: '6px', color: scriptEditorOpen ? 'var(--accent)' : 'var(--text-primary)' }} onClick={() => setScriptEditorOpen(!scriptEditorOpen)}>
+              <Code2 size={16} />
+              Scripts
+            </button>
             <button className="notion-btn" style={{ border: 'none', background: 'transparent', gap: '6px', color: chatOpen ? 'var(--accent)' : 'var(--text-primary)' }} onClick={() => setChatOpen(!chatOpen)}>
               <Sparkles size={16} fill={chatOpen ? 'currentColor' : 'none'} />
               AI Assistant
@@ -235,8 +247,8 @@ function App() {
         )}
 
         {activePageId && pages.length > 0 && (
-          <Canvas 
-            currentTheme={theme} 
+          <Canvas
+            currentTheme={theme}
             activePage={pages.find(p => p.id === activePageId) || pages[0]}
             onUpdatePage={async (updated: PageData) => {
               try {
@@ -247,7 +259,7 @@ function App() {
             childPages={pages.filter(p => p.parentId === activePageId && !p.isDeleted)}
             onAddSubPage={async () => {
               const newId = Date.now().toString();
-              const newPage: PageData = { id: newId, title: 'Untitled', icon: '📄', updatedAt: new Date().toLocaleDateString(), coverImage: null, isFavorite: false, workspaceId: activeWorkspaceId, parentId: activePageId, isDeleted: false };
+              const newPage: PageData = { id: newId, title: 'Untitled', icon: ' ', updatedAt: new Date().toLocaleDateString(), coverImage: null, isFavorite: false, workspaceId: activeWorkspaceId, parentId: activePageId, isDeleted: false };
               try {
                 await invoke('save_page', { page: newPage });
                 setPages([...pages, newPage]);
@@ -261,9 +273,19 @@ function App() {
         )}
       </div>
 
+      {/* Workflow Builder Modal */}
+      {workflowsOpen && (
+        <WorkflowBuilderModal onClose={() => setWorkflowsOpen(false)} />
+      )}
+
+      {/* Script Editor Modal */}
+      {scriptEditorOpen && (
+        <ScriptEditorModal onClose={() => setScriptEditorOpen(false)} />
+      )}
+
       {/* Settings Modal */}
       {settingsOpen && (
-        <SettingsModal 
+        <SettingsModal
           theme={theme}
           toggleTheme={() => setTheme(t => t === 'light' ? 'dark' : 'light')}
           activeWorkspace={workspaces.find(w => w.id === activeWorkspaceId)}

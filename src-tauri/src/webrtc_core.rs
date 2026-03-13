@@ -1,3 +1,4 @@
+use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tauri::Emitter;
 use tokio::sync::Mutex;
@@ -178,6 +179,27 @@ pub async fn accept_answer(
         .map_err(|e| e.to_string())?;
 
     Ok(())
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct PeerInfo {
+    pub id: String,
+    pub status: String,
+}
+
+/// Returns connected peers. Currently WebRTC supports a single peer connection,
+/// so this returns at most one entry based on whether a DataChannel is open.
+#[tauri::command]
+pub async fn list_peers(state: tauri::State<'_, WebRtcState>) -> Result<Vec<PeerInfo>, String> {
+    let dc_lock = state.dc.lock().await;
+    if dc_lock.is_some() {
+        Ok(vec![PeerInfo {
+            id: "peer_0".to_string(),
+            status: "connected".to_string(),
+        }])
+    } else {
+        Ok(vec![])
+    }
 }
 
 #[tauri::command]

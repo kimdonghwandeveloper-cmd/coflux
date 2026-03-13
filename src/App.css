@@ -32,7 +32,15 @@ body {
   color: var(--text-primary);
   transition: background-color 0.3s, color 0.3s;
   overflow: hidden;
-  /* App-like feel */
+}
+
+/* Hide scrollbars globally (both axes) while keeping scroll functionality */
+* {
+  scrollbar-width: none;       /* Firefox */
+  -ms-overflow-style: none;    /* IE / Edge */
+}
+*::-webkit-scrollbar {
+  display: none;               /* Chrome / Safari / Tauri WebView */
 }
 
 /* Layout Core */
