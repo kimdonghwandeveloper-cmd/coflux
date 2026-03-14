@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { Plus, Settings, Moon, Sun, MoreHorizontal, Star, Trash2, ChevronDown, ChevronRight, RotateCcw, X, GripVertical } from 'lucide-react';
 import { PageData, WorkspaceData } from '../App';
-import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, DragEndEvent } from '@dnd-kit/core';
+import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, DragEndEvent, DragStartEvent, DragOverlay } from '@dnd-kit/core';
 import { SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy, useSortable, arrayMove } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 
@@ -102,6 +102,7 @@ export const Sidebar = ({
   onReorderPages: (ids: string[]) => void
 }) => {
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+  const [activeDragPage, setActiveDragPage] = useState<PageData | null>(null);
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
   const [showWsDropdown, setShowWsDropdown] = useState(false);
   const [showTrash, setShowTrash] = useState(false);
@@ -138,7 +139,13 @@ export const Sidebar = ({
   const favoriteRoots = pages.filter(p => p.isFavorite && !p.parentId);
   const privateRoots = pages.filter(p => !p.isFavorite && !p.parentId);
 
+  const handleDragStart = (event: DragStartEvent) => {
+    const page = privateRoots.find(p => p.id === event.active.id);
+    setActiveDragPage(page ?? null);
+  };
+
   const handleDragEnd = (event: DragEndEvent) => {
+    setActiveDragPage(null);
     const { active, over } = event;
     if (!over || active.id === over.id) return;
     const oldIds = privateRoots.map(p => p.id);
@@ -220,10 +227,37 @@ export const Sidebar = ({
               <Plus size={16} color="var(--text-secondary)" />
             </div>
           </div>
-          <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+          <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
             <SortableContext items={privateRoots.map(p => p.id)} strategy={verticalListSortingStrategy}>
               {privateRoots.map(p => renderPageItem(p, 0))}
             </SortableContext>
+            <DragOverlay dropAnimation={null}>
+              {activeDragPage && (
+                <div style={{
+                  background: 'var(--bg-primary)',
+                  border: '1.5px solid var(--border-color)',
+                  borderRadius: '6px',
+                  padding: '5px 10px',
+                  opacity: 0.85,
+                  boxShadow: '0 8px 24px rgba(0,0,0,0.15)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  fontSize: '13px',
+                  color: 'var(--text-primary)',
+                  cursor: 'grabbing',
+                  pointerEvents: 'none',
+                  whiteSpace: 'nowrap',
+                  maxWidth: '200px',
+                  overflow: 'hidden',
+                }}>
+                  <span style={{ fontSize: '15px' }}>{activeDragPage.icon}</span>
+                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    {activeDragPage.title || 'Untitled'}
+                  </span>
+                </div>
+              )}
+            </DragOverlay>
           </DndContext>
         </div>
 

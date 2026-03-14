@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { webrtcClient } from '../lib/webrtc_client';
 import { listen, UnlistenFn } from '@tauri-apps/api/event';
 import { BlockNoteView } from "@blocknote/mantine";
@@ -15,8 +15,141 @@ import { readFile } from '@tauri-apps/plugin-fs';
 import EmojiPicker, { Theme as EmojiTheme } from 'emoji-picker-react';
 import { RiFileLine } from 'react-icons/ri';
 
-// Sub-component wrapper because `useCreateBlockNote` hook depends on provider
+// CSS classes used across drag and selection interactions.
+// Keeping them as constants prevents typo-induced silent failures.
+const CLS = {
+  DRAG_ACTIVE:   'block-drag-active',   // applied while a block is being dragged
+  SELECTING:     'block-selecting',     // applied during range-select (outlines + no text-select)
+  BLOCK_SEL:     'bn-block-selected',   // applied to individually highlighted blocks
+} as const;
+
+// Returns the deepest [data-id] block element whose bounding rect contains clientY.
+// Used by both the range-select and block-drag effects.
+function blockAtY(container: HTMLElement, clientY: number): HTMLElement | null {
+  return Array.from(container.querySelectorAll<HTMLElement>('[data-id]'))
+    .findLast(el => {
+      const r = el.getBoundingClientRect();
+      return clientY >= r.top && clientY <= r.bottom;
+    }) ?? null;
+}
+
+// Walks up the DOM to find the first scrollable ancestor.
+// Called once per drag-start, result cached in drag state.
+function scrollParentOf(el: HTMLElement): HTMLElement {
+  let cur: HTMLElement | null = el.parentElement;
+  while (cur) {
+    const { overflow, overflowY } = window.getComputedStyle(cur);
+    if (['auto', 'scroll'].includes(overflow) || ['auto', 'scroll'].includes(overflowY))
+      return cur;
+    cur = cur.parentElement;
+  }
+  return document.documentElement;
+}
+
+// CollaborativeEditor is a separate component because useCreateBlockNote
+// must be called after the Yjs provider is ready.
 const CollaborativeEditor = ({ provider, currentTheme, onAddSubPage, pageId }: { provider: any, currentTheme: 'light' | 'dark', onAddSubPage: () => void, pageId: string }) => {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+
+  const clearSelection = useCallback(() => {
+    setSelectedIds(prev => prev.size === 0 ? prev : new Set());
+  }, []);
+
+  // Sync selectedIds → CSS class on each [data-id] element.
+  // Runs only when the selection Set reference changes (after mouseup or Escape).
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+    container.querySelectorAll<HTMLElement>('[data-id]').forEach(el => {
+      el.classList.toggle(CLS.BLOCK_SEL, selectedIds.has(el.getAttribute('data-id')!));
+    });
+  }, [selectedIds]);
+
+  // Escape deselects all blocks
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => { if (e.key === 'Escape') clearSelection(); };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [clearSelection]);
+
+  // Range drag-select: vertical drag over the content area highlights whole blocks.
+  // A fixed overlay is inserted on activation to prevent BlockNote receiving
+  // further mouse events, which would restart text selection.
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    let rawStart: { x: number; y: number } | null = null;
+    let startBlockEl: HTMLElement | null = null;
+    let blockSelectActive = false;
+    let overlay: HTMLDivElement | null = null;
+
+    const highlightRange = (blockA: HTMLElement, blockB: HTMLElement) => {
+      const all = Array.from(container.querySelectorAll<HTMLElement>('[data-id]'));
+      const lo = Math.min(all.indexOf(blockA), all.indexOf(blockB));
+      const hi = Math.max(all.indexOf(blockA), all.indexOf(blockB));
+      all.forEach((b, i) => b.classList.toggle(CLS.BLOCK_SEL, i >= lo && i <= hi));
+    };
+
+    const removeOverlay = () => {
+      overlay?.remove();
+      overlay = null;
+      container.classList.remove(CLS.SELECTING);
+    };
+
+    const onMouseDown = (e: MouseEvent) => {
+      if ((e.target as HTMLElement).closest('.bn-side-menu')) return;
+      rawStart = { x: e.clientX, y: e.clientY };
+      startBlockEl = blockAtY(container, e.clientY);
+      blockSelectActive = false;
+    };
+
+    const onMouseMove = (e: MouseEvent) => {
+      if (!rawStart) return;
+      const dx = Math.abs(e.clientX - rawStart.x);
+      const dy = Math.abs(e.clientY - rawStart.y);
+
+      if (!blockSelectActive) {
+        if (dy < 6 || dx > dy) return; // wait for clear vertical intent
+        blockSelectActive = true;
+        container.classList.add(CLS.SELECTING);
+        overlay = document.createElement('div');
+        overlay.style.cssText = 'position:fixed;inset:0;z-index:200;cursor:ns-resize;';
+        document.body.appendChild(overlay);
+        window.getSelection()?.removeAllRanges();
+        container.querySelectorAll('.' + CLS.BLOCK_SEL).forEach(el => el.classList.remove(CLS.BLOCK_SEL));
+      }
+
+      e.preventDefault();
+      const cur = blockAtY(container, e.clientY);
+      if (cur && startBlockEl) highlightRange(startBlockEl, cur);
+    };
+
+    const onMouseUp = () => {
+      container.classList.remove(CLS.SELECTING);
+      removeOverlay();
+      rawStart = null;
+      startBlockEl = null;
+      if (!blockSelectActive) return;
+      blockSelectActive = false;
+      const ids = new Set<string>();
+      container.querySelectorAll<HTMLElement>(`[data-id].${CLS.BLOCK_SEL}`).forEach(el =>
+        ids.add(el.getAttribute('data-id')!)
+      );
+      setSelectedIds(ids);
+    };
+
+    container.addEventListener('mousedown', onMouseDown);
+    window.addEventListener('mousemove', onMouseMove, { passive: false });
+    window.addEventListener('mouseup', onMouseUp);
+    return () => {
+      container.removeEventListener('mousedown', onMouseDown);
+      window.removeEventListener('mousemove', onMouseMove);
+      window.removeEventListener('mouseup', onMouseUp);
+      removeOverlay();
+    };
+  }, []);
 
   // Custom upload handler: save images to Rust DB and return a retrievable URL
   const uploadFile = useCallback(async (file: File): Promise<string> => {
@@ -43,6 +176,175 @@ const CollaborativeEditor = ({ provider, currentTheme, onAddSubPage, pageId }: {
     },
     uploadFile
   });
+
+  // ── Custom :: block drag ────────────────────────────────────────────────
+  // Replaces BlockNote's native HTML5 drag (unreliable in Tauri WebView2)
+  // with a full pointer-event based system: DOM-clone ghost, drop indicator
+  // with end-dots, dim placeholder, auto-scroll, and Escape to cancel.
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    type DS = {
+      id: string;
+      blockEl: HTMLElement;
+      ghost: HTMLDivElement;
+      line: HTMLDivElement;
+      targetId: string;
+      placement: 'before' | 'after';
+      scrollParent: HTMLElement; // cached at drag-start, reused per frame
+    };
+    let ds: DS | null = null;
+
+    const endDrag = () => {
+      if (!ds) return;
+      ds.blockEl.style.opacity = '';
+      ds.ghost.remove();
+      ds.line.remove();
+      container.classList.remove(CLS.DRAG_ACTIVE);
+      ds = null;
+    };
+
+    const onPointerDown = (e: PointerEvent) => {
+      if (e.button !== 0) return;
+      const target = e.target as HTMLElement;
+
+      // BlockNote v0.47: draggable={true} is on the MantineActionIcon button itself.
+      // data-test="dragHandle" is only on the inner SVG, so closest() from button padding fails.
+      // Instead: match the button with draggable="true" inside .bn-side-menu.
+      const dragBtn = target.closest<HTMLElement>('[draggable="true"]');
+      if (!dragBtn || !dragBtn.closest('.bn-side-menu')) return;
+
+      // Find the block by Y position (side menu floats outside block DOM)
+      const blockEl = blockAtY(container, e.clientY);
+      if (!blockEl) return;
+
+      // Prevent BlockNote's mousedown from firing → disables its native drag
+      e.preventDefault();
+
+      const id = blockEl.getAttribute('data-id')!;
+      const rect = blockEl.getBoundingClientRect();
+
+      // ── Ghost: deep-clone the actual block DOM ───────────────────────
+      const ghost = blockEl.cloneNode(true) as HTMLDivElement;
+      // Hide side menu inside the clone (no nested drag handle)
+      ghost.querySelectorAll<HTMLElement>('.bn-side-menu').forEach(el => {
+        el.style.display = 'none';
+      });
+      // Neutralise any contenteditable regions in the clone
+      ghost.querySelectorAll<HTMLElement>('[contenteditable]').forEach(el => {
+        el.contentEditable = 'false';
+      });
+      Object.assign(ghost.style, {
+        position: 'fixed',
+        width: `${rect.width}px`,
+        left: `${e.clientX + 14}px`,
+        top: `${e.clientY + 8}px`,
+        margin: '0',
+        zIndex: '9999',
+        pointerEvents: 'none',
+        opacity: '0.65',
+        transform: 'scale(1.02)',
+        boxShadow: '0 10px 32px rgba(0,0,0,0.22)',
+        borderRadius: '6px',
+        transition: 'none',
+        outline: 'none',
+      });
+      document.body.appendChild(ghost);
+
+      // ── Drop indicator: horizontal line with dots at both ends ───────
+      const line = document.createElement('div');
+      line.innerHTML = `
+        <span style="position:absolute;left:-5px;top:50%;transform:translateY(-50%);
+          width:10px;height:10px;border-radius:50%;background:#2383e2;
+          border:2px solid var(--bg-primary);"></span>
+        <span style="position:absolute;right:-5px;top:50%;transform:translateY(-50%);
+          width:10px;height:10px;border-radius:50%;background:#2383e2;
+          border:2px solid var(--bg-primary);"></span>
+      `;
+      Object.assign(line.style, {
+        position: 'fixed',
+        height: '3px',
+        background: '#2383e2',
+        borderRadius: '2px',
+        pointerEvents: 'none',
+        zIndex: '9998',
+        display: 'none',
+        overflow: 'visible',
+      });
+      document.body.appendChild(line);
+
+      // Dim original block to act as a placeholder in the layout
+      blockEl.style.opacity = '0.25';
+
+      ds = { id, blockEl, ghost, line, targetId: '', placement: 'after', scrollParent: scrollParentOf(container) };
+      container.classList.add(CLS.DRAG_ACTIVE);
+    };
+
+    const onPointerMove = (e: PointerEvent) => {
+      if (!ds) return;
+
+      // Ghost follows cursor
+      ds.ghost.style.left = `${e.clientX + 14}px`;
+      ds.ghost.style.top = `${e.clientY + 8}px`;
+
+      // Determine drop target and placement
+      const target = blockAtY(container, e.clientY);
+      if (target && target.getAttribute('data-id') !== ds.id) {
+        const r = target.getBoundingClientRect();
+        const above = e.clientY < r.top + r.height / 2;
+        ds.targetId = target.getAttribute('data-id')!;
+        ds.placement = above ? 'before' : 'after';
+        ds.line.style.display = 'block';
+        ds.line.style.top = `${(above ? r.top : r.bottom) - 1.5}px`;
+        ds.line.style.left = `${r.left + 36}px`;
+        ds.line.style.width = `${r.width - 40}px`;
+      } else {
+        ds.targetId = '';
+        ds.line.style.display = 'none';
+      }
+
+      // Auto-scroll when dragging near viewport edges
+      const ZONE = 72;
+      const SPEED = 10;
+      if (e.clientY < ZONE) ds.scrollParent.scrollBy(0, -SPEED);
+      else if (e.clientY > window.innerHeight - ZONE) ds.scrollParent.scrollBy(0, SPEED);
+    };
+
+    const onPointerUp = () => {
+      if (!ds) return;
+      const { id, targetId, placement } = ds;
+      endDrag();
+      if (!targetId || targetId === id) return;
+      try {
+        const dragged = editor.getBlock(id);
+        if (!dragged) return;
+        // Omit id so BlockNote assigns a fresh one → no Yjs CRDT collision
+        const { id: _discard, ...content } = dragged as any;
+        editor.insertBlocks([content], { id: targetId }, placement);
+        editor.removeBlocks([{ id }]);
+      } catch (err) {
+        console.error('Block move failed:', err);
+      }
+    };
+
+    // Escape cancels the current drag without moving anything
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && ds) endDrag();
+    };
+
+    container.addEventListener('pointerdown', onPointerDown, { capture: true });
+    window.addEventListener('pointermove', onPointerMove);
+    window.addEventListener('pointerup', onPointerUp);
+    window.addEventListener('keydown', onKeyDown, { capture: true });
+    return () => {
+      container.removeEventListener('pointerdown', onPointerDown, { capture: true });
+      window.removeEventListener('pointermove', onPointerMove);
+      window.removeEventListener('pointerup', onPointerUp);
+      window.removeEventListener('keydown', onKeyDown, { capture: true });
+      endDrag();
+    };
+  }, [editor]);
 
   // Yjs UndoManager for Ctrl+Z / Ctrl+Y (ProseMirror history is disabled in collab mode)
   useEffect(() => {
@@ -92,12 +394,46 @@ const CollaborativeEditor = ({ provider, currentTheme, onAddSubPage, pageId }: {
   }, [onAddSubPage]);
 
   return (
-    <BlockNoteView editor={editor} theme={currentTheme} slashMenu={false}>
-      <SuggestionMenuController
-        triggerCharacter="/"
-        getItems={async (query) => filterSuggestionItems(getCustomSlashMenuItems(editor), query)}
-      />
-    </BlockNoteView>
+    <div ref={containerRef} style={{ position: 'relative' }}>
+      <BlockNoteView editor={editor} theme={currentTheme} slashMenu={false}>
+        <SuggestionMenuController
+          triggerCharacter="/"
+          getItems={async (query) => filterSuggestionItems(getCustomSlashMenuItems(editor), query)}
+        />
+      </BlockNoteView>
+
+      {/* Block action toolbar — appears after drag-select */}
+      {selectedIds.size > 0 && (
+        <div style={{
+          position: 'fixed', bottom: 28, left: '50%', transform: 'translateX(-50%)',
+          background: '#2f2f2f', color: '#fff', borderRadius: 8,
+          padding: '8px 14px', display: 'flex', alignItems: 'center', gap: 10,
+          boxShadow: '0 4px 20px rgba(0,0,0,0.25)', zIndex: 300, fontSize: 13,
+          animation: 'slideUpFade 0.15s ease-out forwards',
+        }}>
+          <span style={{ color: 'rgba(255,255,255,0.7)', fontSize: 12 }}>
+            {selectedIds.size}개 블록 선택됨
+          </span>
+          <div style={{ width: 1, height: 16, background: 'rgba(255,255,255,0.2)' }} />
+          <button
+            onClick={() => {
+              const blocks = editor.document.filter((b: { id: string }) => selectedIds.has(b.id));
+              if (blocks.length > 0) editor.removeBlocks(blocks);
+              clearSelection();
+            }}
+            style={{ background: 'rgba(235,87,87,0.25)', border: 'none', color: '#ff8080', padding: '4px 10px', borderRadius: 4, cursor: 'pointer', fontSize: 12, fontWeight: 500 }}
+          >
+            삭제
+          </button>
+          <button
+            onClick={clearSelection}
+            style={{ background: 'transparent', border: 'none', color: 'rgba(255,255,255,0.45)', padding: '4px 6px', cursor: 'pointer', fontSize: 16, lineHeight: 1 }}
+          >
+            ✕
+          </button>
+        </div>
+      )}
+    </div>
   );
 };
 
@@ -308,6 +644,22 @@ export const Canvas = ({
               }}>
               Read from Clipboard
             </button>
+
+            {connState === 'Connected!' && (
+              <>
+                <div style={{ height: '1px', background: 'var(--border-color)', margin: '2px 0' }} />
+                <button className="notion-btn" style={{ width: '100%', justifyContent: 'center', fontSize: '12px', color: 'var(--error)', borderColor: 'var(--error)' }}
+                  onClick={async () => {
+                    try {
+                      await webrtcClient.closeConnection();
+                      setOffer('');
+                      setRemoteSdp('');
+                    } catch (e) { console.error(e); }
+                  }}>
+                  Disconnect
+                </button>
+              </>
+            )}
           </div>
         )}
       </div>

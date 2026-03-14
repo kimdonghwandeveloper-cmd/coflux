@@ -281,6 +281,12 @@ html[data-theme='dark'] .react-grid-item {
   min-height: 100%;
 }
 
+/* Dark mode: BlockNote's default editor bg (#1F1F1F) is brighter than our page bg.
+   Force it to match so the editing area doesn't visually stand out. */
+[data-theme='dark'] .bn-editor {
+  background-color: var(--bg-primary) !important;
+}
+
 /* Notion-style text selection highlight */
 .bn-editor ::selection {
   background: rgba(35, 131, 226, 0.28);
@@ -291,4 +297,62 @@ html[data-theme='dark'] .react-grid-item {
 .ProseMirror-selectednode > .bn-block-content > * {
   outline: none !important;
   background-color: rgba(35, 131, 226, 0.28) !important;
+}
+
+/* ── Block styling ───────────────────────────────────── */
+
+.bn-block-outer {
+  border-radius: 4px;
+  margin: 1px 0;
+  transition: background 0.1s;
+}
+
+/* Hover: invisible by default — only interaction states add visuals */
+.bn-block-outer:hover { background: transparent; }
+[data-theme='dark'] .bn-block-outer:hover { background: transparent; }
+
+/* ── Drag handle (⠿) ─────────────────────────────────── */
+
+/* Drag handle cursor — targets the draggable button inside .bn-side-menu */
+.bn-side-menu [draggable="true"] {
+  cursor: grab !important;
+  user-select: none;
+}
+.bn-side-menu [draggable="true"]:active {
+  cursor: grabbing !important;
+}
+
+/* ── Block drag active state ─────────────────────────── */
+
+/* Show subtle outlines on all blocks while dragging one */
+.block-drag-active .bn-block-outer {
+  outline: 1px solid var(--border-color);
+  border-radius: 4px;
+}
+
+/* ── Multi-block range drag-select ───────────────────── */
+
+/* Show outlines while drag-selecting */
+.block-selecting .bn-block-outer {
+  outline: 1px solid var(--border-color);
+}
+
+/* Selected block: Notion-style blue row highlight */
+.bn-block-selected {
+  background: rgba(35, 131, 226, 0.14) !important;
+  border-radius: 3px;
+}
+[data-theme='dark'] .bn-block-selected {
+  background: rgba(35, 131, 226, 0.24) !important;
+}
+
+/* No text highlight colour while block-selecting */
+.bn-block-selected ::selection {
+  background: transparent;
+}
+
+/* Suppress text selection during block-select drag */
+.block-selecting * {
+  user-select: none !important;
+  -webkit-user-select: none !important;
 }

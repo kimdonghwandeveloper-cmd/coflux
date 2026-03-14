@@ -212,3 +212,22 @@ pub async fn send_message(state: tauri::State<'_, WebRtcState>, msg: String) -> 
         Err("DataChannel not ready".into())
     }
 }
+
+#[tauri::command]
+pub async fn close_connection(
+    app_handle: tauri::AppHandle,
+    state: tauri::State<'_, WebRtcState>,
+) -> Result<(), String> {
+    let mut dc_lock = state.dc.lock().await;
+    if let Some(dc) = dc_lock.take() {
+        let _ = dc.close().await;
+    }
+
+    let mut pc_lock = state.pc.lock().await;
+    if let Some(pc) = pc_lock.take() {
+        let _ = pc.close().await;
+    }
+
+    let _ = app_handle.emit("webrtc-state", "Disconnected");
+    Ok(())
+}

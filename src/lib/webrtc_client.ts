@@ -32,5 +32,9 @@ export const webrtcClient = {
 
   getUserStatus: async (): Promise<string> => {
     return await invoke<string>("get_user_status");
+  },
+
+  closeConnection: async (): Promise<void> => {
+    await invoke("close_connection");
   }
 };

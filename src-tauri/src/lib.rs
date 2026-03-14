@@ -81,6 +81,7 @@ pub fn run() {
             workflows::log_workflow_execution,
             workflows::get_workflow_logs,
             webrtc_core::list_peers,
+            webrtc_core::close_connection,
             script_storage::get_user_scripts,
             script_storage::save_user_script,
             script_storage::delete_user_script,
