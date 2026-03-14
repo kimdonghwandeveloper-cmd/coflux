@@ -7,6 +7,7 @@ import { filterSuggestionItems } from "@blocknote/core/extensions";
 import "@blocknote/mantine/style.css";
 import { PageData } from '../App';
 import { Image as ImageIcon, Wifi } from 'lucide-react';
+import { QRCodeSVG } from 'qrcode.react';
 import { invoke } from '@tauri-apps/api/core';
 import * as Y from 'yjs';
 import { Awareness } from 'y-protocols/awareness';
@@ -595,6 +596,11 @@ export const Canvas = ({
 
             {offer && (
               <>
+                {/* QR Code for mobile scanning */}
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '6px', padding: '10px', background: '#fff', borderRadius: '6px', border: '1px solid var(--border-color)' }}>
+                  <QRCodeSVG value={offer} size={180} level="L" />
+                  <span style={{ fontSize: '10px', color: '#666' }}>모바일에서 스캔</span>
+                </div>
                 <textarea readOnly value={offer}
                   style={{ width: '100%', height: '50px', fontSize: '9px', padding: '6px', borderRadius: '4px', border: '1px solid var(--border-color)', background: 'var(--bg-secondary)', color: 'var(--text-primary)', resize: 'none', fontFamily: 'monospace' }} />
                 <button className="notion-btn" style={{ width: '100%', justifyContent: 'center', fontSize: '12px' }}
