@@ -50,6 +50,12 @@ const CollaborativeEditor = ({ provider, currentTheme, onAddSubPage, pageId }: {
     const undoManager = new Y.UndoManager(fragment);
 
     const handleKeyDown = (e: KeyboardEvent) => {
+      // Only intercept if the focus is inside a BlockNote element or the document body (not other inputs)
+      const target = e.target as HTMLElement;
+      const isInsideEditor = target.closest('.bn-editor') || target === document.body;
+      
+      if (!isInsideEditor) return;
+
       if (e.ctrlKey && e.key === 'z' && !e.shiftKey) {
         e.preventDefault();
         undoManager.undo();
@@ -121,6 +127,12 @@ export const Canvas = ({
   const [copied, setCopied] = useState(false);
   const [showNetwork, setShowNetwork] = useState(false);
   const [remoteSdp, setRemoteSdp] = useState('');
+  const [localTitle, setLocalTitle] = useState(activePage.title);
+
+  // Keep local title in sync with prop when page changes
+  useEffect(() => {
+    setLocalTitle(activePage.title);
+  }, [activePage.id, activePage.title]);
 
   // Initialize Y.Doc directly from SQLite Rust Database (Local Persistence)
   useEffect(() => {
@@ -337,8 +349,18 @@ export const Canvas = ({
         )}
 
         <input
-          value={activePage.title}
-          onChange={e => onUpdatePage({...activePage, title: e.target.value})}
+          value={localTitle}
+          onChange={e => setLocalTitle(e.target.value)}
+          onBlur={() => {
+            if (localTitle !== activePage.title) {
+              onUpdatePage({...activePage, title: localTitle});
+            }
+          }}
+          onKeyDown={e => {
+            if (e.key === 'Enter') {
+              (e.target as HTMLInputElement).blur();
+            }
+          }}
           placeholder="Page Title"
           style={{ fontSize: '40px', fontWeight: 700, margin: '0 0 12px 0', letterSpacing: '-0.02em', outline: 'none', color: 'var(--text-primary)', background: 'transparent', border: 'none', width: '100%', fontFamily: 'inherit' }} 
         />
