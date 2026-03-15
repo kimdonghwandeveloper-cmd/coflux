@@ -23,22 +23,8 @@ dist-ssr
 *.sln
 *.sw?
 
-# React Native — Mobile
-mobile/node_modules/
-mobile/CofluxMobile/node_modules/
-mobile/CofluxMobile/android/build/
-mobile/CofluxMobile/android/app/build/
-mobile/CofluxMobile/android/.gradle/
-mobile/CofluxMobile/android/local.properties
-mobile/CofluxMobile/ios/Pods/
-mobile/CofluxMobile/ios/build/
-mobile/CofluxMobile/.gradle/
-mobile/CofluxMobile/build/
-mobile/CofluxMobile/*.keystore
-mobile/CofluxMobile/android/app/*.keystore
-mobile/CofluxMobile/android/app/debug.keystore
-mobile/CofluxMobile/.bundle/
-mobile/CofluxMobile/Gemfile.lock
+# React Native — Mobile (moved to separate repo: coflux_mobile)
+mobile/
 
 # Rust & Tauri
 src-tauri/target/
