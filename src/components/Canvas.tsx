@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { indexPage, getBacklinks, LinkPageInfo } from '../lib/embeddings';
 import { webrtcClient } from '../lib/webrtc_client';
 import { listen, UnlistenFn } from '@tauri-apps/api/event';
 import { BlockNoteView } from "@blocknote/mantine";
@@ -6,6 +7,7 @@ import { useCreateBlockNote, SuggestionMenuController, getDefaultReactSlashMenuI
 import { filterSuggestionItems } from "@blocknote/core/extensions";
 import "@blocknote/mantine/style.css";
 import { PageData } from '../App';
+import { WorkspaceTheme } from '../lib/theme';
 import { Image as ImageIcon, Wifi } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { invoke } from '@tauri-apps/api/core';
@@ -49,7 +51,24 @@ function scrollParentOf(el: HTMLElement): HTMLElement {
 
 // CollaborativeEditor is a separate component because useCreateBlockNote
 // must be called after the Yjs provider is ready.
-const CollaborativeEditor = ({ provider, currentTheme, onAddSubPage, pageId }: { provider: any, currentTheme: 'light' | 'dark', onAddSubPage: () => void, pageId: string }) => {
+function buildBlockNoteTheme(t: WorkspaceTheme) {
+  const c = t.colors;
+  return {
+    colors: {
+      editor:   { text: c.textPrimary,   background: c.bgPrimary },
+      menu:     { text: c.textPrimary,   background: c.bgSurface },
+      tooltip:  { text: c.textPrimary,   background: c.bgSecondary },
+      hovered:  { text: c.textPrimary,   background: c.bgSecondary },
+      selected: { text: c.textPrimary,   background: c.bgSecondary },
+      disabled: { text: c.textSecondary, background: c.bgSecondary },
+      shadow:   'rgba(0,0,0,0.15)',
+      border:   c.borderColor,
+      sideMenu: c.textSecondary,
+    },
+  } as const;
+}
+
+const CollaborativeEditor = ({ provider, currentTheme, workspaceTheme, onAddSubPage, pageId, allPages }: { provider: any, currentTheme: 'light' | 'dark', workspaceTheme?: WorkspaceTheme, onAddSubPage: () => void, pageId: string, allPages?: PageData[] }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
@@ -177,6 +196,31 @@ const CollaborativeEditor = ({ provider, currentTheme, onAddSubPage, pageId }: {
     },
     uploadFile
   });
+
+  // Auto-index page content for semantic search (debounced 5s)
+  const indexTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    if (!editor) return;
+    const unsubscribe = editor.onChange(() => {
+      if (indexTimerRef.current) clearTimeout(indexTimerRef.current);
+      indexTimerRef.current = setTimeout(async () => {
+        const text = editor.document
+          .map((block: any) => {
+            const inline = Array.isArray(block.content)
+              ? block.content.map((c: any) => c.text ?? '').join('')
+              : '';
+            return inline;
+          })
+          .filter(Boolean)
+          .join('\n');
+        await indexPage(pageId, '', text);
+      }, 5000);
+    });
+    return () => {
+      unsubscribe?.();
+      if (indexTimerRef.current) clearTimeout(indexTimerRef.current);
+    };
+  }, [editor, pageId]);
 
   // ── Custom :: block drag ────────────────────────────────────────────────
   // Replaces BlockNote's native HTML5 drag (unreliable in Tauri WebView2)
@@ -396,11 +440,32 @@ const CollaborativeEditor = ({ provider, currentTheme, onAddSubPage, pageId }: {
 
   return (
     <div ref={containerRef} style={{ position: 'relative' }}>
-      <BlockNoteView editor={editor} theme={currentTheme} slashMenu={false}>
+      <BlockNoteView editor={editor} theme={workspaceTheme ? buildBlockNoteTheme(workspaceTheme) : currentTheme} slashMenu={false}>
         <SuggestionMenuController
           triggerCharacter="/"
           getItems={async (query) => filterSuggestionItems(getCustomSlashMenuItems(editor), query)}
         />
+        {allPages && allPages.length > 0 && (
+          <SuggestionMenuController
+            triggerCharacter="@"
+            getItems={async (query) => {
+              const filtered = allPages
+                .filter(p => !p.isDeleted && (p.title || '').toLowerCase().includes(query.toLowerCase()))
+                .slice(0, 8);
+              return filtered.map(p => ({
+                title: p.title || 'Untitled',
+                onItemClick: () => {
+                  editor.insertInlineContent([{ type: 'text', text: `[[${p.title || 'Untitled'}]]`, styles: {} }]);
+                },
+                icon: <span style={{ fontSize: '14px' }}>{p.icon}</span>,
+                group: '페이지 링크',
+                key: p.id,
+                aliases: [p.title || ''],
+                subtext: '[[링크]] 삽입',
+              }));
+            }}
+          />
+        )}
       </BlockNoteView>
 
       {/* Block action toolbar — appears after drag-select */}
@@ -438,18 +503,22 @@ const CollaborativeEditor = ({ provider, currentTheme, onAddSubPage, pageId }: {
   );
 };
 
-export const Canvas = ({ 
-  currentTheme, 
-  activePage, 
+export const Canvas = ({
+  currentTheme,
+  workspaceTheme,
+  activePage,
   onUpdatePage,
   childPages,
+  allPages,
   onAddSubPage,
   onNavigateToPage,
   onUserCountChange,
   memberCount
-}: { 
+}: {
   currentTheme: 'light' | 'dark',
+  workspaceTheme?: WorkspaceTheme,
   activePage: PageData,
+  allPages?: PageData[],
   onUpdatePage: (p: PageData) => void,
   childPages: PageData[],
   onAddSubPage: () => void,
@@ -460,6 +529,7 @@ export const Canvas = ({
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [provider, setProvider] = useState<any>(null);
   const [connState, setConnState] = useState('Disconnected');
+  const [backlinks, setBacklinks] = useState<LinkPageInfo[]>([]);
   const [offer, setOffer] = useState('');
   const [copied, setCopied] = useState(false);
   const [showNetwork, setShowNetwork] = useState(false);
@@ -469,6 +539,7 @@ export const Canvas = ({
   // Keep local title in sync with prop when page changes
   useEffect(() => {
     setLocalTitle(activePage.title);
+    getBacklinks(activePage.id).then(setBacklinks).catch(() => {});
   }, [activePage.id, activePage.title]);
 
   // Initialize Y.Doc directly from SQLite Rust Database (Local Persistence)
@@ -734,14 +805,14 @@ export const Canvas = ({
         </div>
 
         <div style={{ marginLeft: '-50px', flex: 1, display: 'flex', flexDirection: 'column' }}>
-          {provider ? <CollaborativeEditor provider={provider} currentTheme={currentTheme} onAddSubPage={onAddSubPage} pageId={activePage.id} /> : <div>Loading page data...</div>}
+          {provider ? <CollaborativeEditor provider={provider} currentTheme={currentTheme} workspaceTheme={workspaceTheme} onAddSubPage={onAddSubPage} pageId={activePage.id} allPages={allPages} /> : <div>Loading page data...</div>}
         </div>
 
         {/* Child Pages displayed as clickable Notion-style links */}
         {childPages.length > 0 && (
           <div style={{ marginTop: '16px', paddingTop: '8px' }}>
             {childPages.map(child => (
-              <div 
+              <div
                 key={child.id}
                 onClick={() => onNavigateToPage(child.id)}
                 style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '6px 8px', borderRadius: '4px', cursor: 'pointer', color: 'var(--text-secondary)', fontSize: '14px', transition: 'background 0.1s' }}
@@ -750,6 +821,27 @@ export const Canvas = ({
               >
                 <span style={{ fontSize: '15px' }}>{child.icon}</span>
                 <span style={{ borderBottom: '1px solid var(--text-secondary)', paddingBottom: '1px' }}>{child.title || 'Untitled'}</span>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Backlinks 패널 */}
+        {backlinks.length > 0 && (
+          <div style={{ marginTop: '40px', paddingTop: '20px', borderTop: '1px solid var(--border-color)' }}>
+            <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '10px' }}>
+              {backlinks.length}개의 백링크
+            </div>
+            {backlinks.map(bl => (
+              <div
+                key={bl.page_id}
+                onClick={() => onNavigateToPage(bl.page_id)}
+                style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '5px 8px', borderRadius: '4px', cursor: 'pointer', fontSize: '13px', color: 'var(--text-secondary)', transition: 'background 0.1s' }}
+                onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg-secondary)')}
+                onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+              >
+                <span style={{ fontSize: '14px' }}>{bl.icon}</span>
+                <span style={{ color: 'var(--accent)', textDecoration: 'underline', textDecorationStyle: 'dotted' }}>{bl.title || 'Untitled'}</span>
               </div>
             ))}
           </div>

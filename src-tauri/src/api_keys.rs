@@ -87,6 +87,11 @@ fn decrypt_api_key(app: &tauri::AppHandle, provider: &str) -> Result<String, Str
     String::from_utf8(plaintext).map_err(|e| format!("UTF-8 변환 실패: {e}"))
 }
 
+/// 내부 모듈에서 API 키를 복호화할 때 사용합니다.
+pub(crate) fn decrypt_key_internal(app: &tauri::AppHandle, provider: &str) -> Result<String, String> {
+    decrypt_api_key(app, provider)
+}
+
 // ─── Tauri 커맨드 ─────────────────────────────────────────────────────────────
 
 /// API 키를 AES-256-GCM으로 암호화해 SQLite에 저장합니다.

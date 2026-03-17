@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { Plus, Settings, Moon, Sun, MoreHorizontal, Star, Trash2, ChevronDown, ChevronRight, RotateCcw, X, GripVertical } from 'lucide-react';
 import { PageData, WorkspaceData } from '../App';
+import { TOGGLE_THEME_IDS } from '../lib/theme';
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, DragEndEvent, DragStartEvent, DragOverlay } from '@dnd-kit/core';
 import { SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy, useSortable, arrayMove } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
@@ -64,9 +65,10 @@ const SortablePageItem = ({ page, depth, activePageId, setActivePageId, openMenu
   );
 };
 
-export const Sidebar = ({ 
-  theme, 
-  toggleTheme, 
+export const Sidebar = ({
+  theme,
+  toggleTheme,
+  activeThemeId,
   pages,
   trashedPages,
   activePageId,
@@ -83,8 +85,9 @@ export const Sidebar = ({
   onOpenSettings,
   onReorderPages
 }: { 
-  theme: string, 
+  theme: string,
   toggleTheme: () => void,
+  activeThemeId: string,
   pages: PageData[],
   trashedPages: PageData[],
   activePageId: string,
@@ -300,9 +303,11 @@ export const Sidebar = ({
           <Settings size={16} color="var(--text-secondary)" />
           <span style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>Settings</span>
         </div>
-        <div className="sidebar-item" style={{ margin: 0, padding: '8px', justifyContent: 'center' }} onClick={toggleTheme} title="Toggle Theme">
-          {theme === 'light' ? <Moon size={16} color="var(--text-secondary)"/> : <Sun size={16} color="var(--text-secondary)"/>} 
-        </div>
+        {TOGGLE_THEME_IDS.includes(activeThemeId) && (
+          <div className="sidebar-item" style={{ margin: 0, padding: '8px', justifyContent: 'center' }} onClick={toggleTheme} title="Toggle Theme">
+            {theme === 'light' ? <Moon size={16} color="var(--text-secondary)"/> : <Sun size={16} color="var(--text-secondary)"/>}
+          </div>
+        )}
       </div>
     </div>
   );

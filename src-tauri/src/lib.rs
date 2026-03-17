@@ -2,9 +2,11 @@ mod ai_channel;
 mod api_keys;
 mod clipboard_sync;
 mod db_core;
+mod embeddings;
 mod os_hooks;
 mod script_storage;
 mod security;
+mod theme_store;
 mod webrtc_core;
 mod workflows;
 
@@ -59,6 +61,12 @@ pub fn run() {
             if let Err(e) = api_keys::init_api_key_table() {
                 eprintln!("Failed to init api_keys table: {}", e);
             }
+            if let Err(e) = theme_store::init_theme_table() {
+                eprintln!("Failed to init workspace_themes table: {}", e);
+            }
+            if let Err(e) = embeddings::init_embeddings_table() {
+                eprintln!("Failed to init embeddings table: {}", e);
+            }
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -96,7 +104,15 @@ pub fn run() {
             api_keys::coflux_register_api_key,
             api_keys::coflux_has_api_key,
             api_keys::coflux_delete_api_key,
-            api_keys::coflux_external_api_call
+            api_keys::coflux_external_api_call,
+            theme_store::get_workspace_theme,
+            theme_store::save_workspace_theme,
+            embeddings::coflux_index_page,
+            embeddings::coflux_search_similar,
+            embeddings::coflux_get_index_count,
+            embeddings::coflux_get_backlinks,
+            embeddings::coflux_get_outlinks,
+            embeddings::coflux_get_all_links,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

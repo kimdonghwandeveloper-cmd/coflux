@@ -5,9 +5,11 @@ import { Sidebar } from './components/Sidebar';
 import { SettingsModal } from './components/SettingsModal';
 import { WorkflowBuilderModal } from './components/WorkflowBuilder';
 import { ScriptEditorModal } from './components/ScriptEditor';
-import { Menu, Search, Users, Bell, Sparkles, Zap, Code2 } from 'lucide-react';
+import { Menu, Search, Users, Bell, Sparkles, Zap, Code2, GitBranch } from 'lucide-react';
 import { AiChatWidget } from './components/AiChatWidget';
+import { KnowledgeMap } from './components/KnowledgeMap';
 import { invoke } from '@tauri-apps/api/core';
+import { applyTheme, resolveTheme, WorkspaceTheme, PRESET_THEMES } from './lib/theme';
 
 export interface WorkspaceData {
   id: string;
@@ -31,11 +33,15 @@ export interface PageData {
 
 function App() {
   const [theme, setTheme] = useState<'light' | 'dark'>('light');
+  const [activeThemeId, setActiveThemeId] = useState<string>('notion-light');
+  const [activeTheme, setActiveTheme] = useState<WorkspaceTheme>(PRESET_THEMES[0]);
+  const [savedCustomTheme, setSavedCustomTheme] = useState<WorkspaceTheme | undefined>(undefined);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [chatOpen, setChatOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [workflowsOpen, setWorkflowsOpen] = useState(false);
   const [scriptEditorOpen, setScriptEditorOpen] = useState(false);
+  const [knowledgeMapOpen, setKnowledgeMapOpen] = useState(false);
 
   const [workspaces, setWorkspaces] = useState<WorkspaceData[]>([]);
   const [activeWorkspaceId, setActiveWorkspaceId] = useState<string | null>(null);
@@ -65,6 +71,18 @@ function App() {
         const wsId = loadedWs.length > 0 ? loadedWs[0].id : 'default';
         setActiveWorkspaceId(wsId);
 
+        // Load and apply saved theme for this workspace
+        try {
+          const themeRow = await invoke<{ theme_id: string; custom_theme_json: string | null }>('get_workspace_theme', { workspaceId: wsId });
+          const customTheme: WorkspaceTheme | undefined = themeRow.custom_theme_json ? JSON.parse(themeRow.custom_theme_json) : undefined;
+          const resolved = resolveTheme(themeRow.theme_id, customTheme);
+          applyTheme(resolved);
+          setActiveThemeId(themeRow.theme_id);
+          setActiveTheme(resolved);
+          setTheme(resolved.isDark ? 'dark' : 'light');
+          if (customTheme) setSavedCustomTheme(customTheme);
+        } catch (_) {}
+
         const loadedPages: PageData[] = await invoke('get_pages');
         setPages(loadedPages);
 
@@ -86,9 +104,26 @@ function App() {
     loadData();
   }, []);
 
-  useEffect(() => {
-    document.documentElement.setAttribute('data-theme', theme);
-  }, [theme]);
+  const handleThemeChange = (themeId: string, customTheme?: WorkspaceTheme) => {
+    const resolved = resolveTheme(themeId, customTheme);
+    applyTheme(resolved);
+    setActiveThemeId(themeId);
+    setActiveTheme(resolved);
+    setTheme(resolved.isDark ? 'dark' : 'light');
+    if (themeId === 'custom' && customTheme) setSavedCustomTheme(customTheme);
+    if (activeWorkspaceId) {
+      invoke('save_workspace_theme', {
+        workspaceId: activeWorkspaceId,
+        themeId,
+        customThemeJson: customTheme ? JSON.stringify(customTheme) : null,
+      }).catch(() => {});
+    }
+  };
+
+  const handleToggleTheme = () => {
+    const nextId = theme === 'light' ? 'notion-dark' : 'notion-light';
+    handleThemeChange(nextId);
+  };
 
   // Filter pages for the active workspace (excluding deleted)
   const workspacePages = pages.filter(p => (p.workspaceId || 'default') === activeWorkspaceId && !p.isDeleted);
@@ -110,7 +145,8 @@ function App() {
       {sidebarOpen && (
         <Sidebar
           theme={theme}
-          toggleTheme={() => setTheme(t => t === 'light' ? 'dark' : 'light')}
+          toggleTheme={handleToggleTheme}
+          activeThemeId={activeThemeId}
           pages={workspacePages}
           trashedPages={trashedPages}
           activePageId={activePageId || ''}
@@ -225,6 +261,10 @@ function App() {
               <span>{memberCount} {memberCount === 1 ? 'member' : 'members'}</span>
             </div>
             <Bell size={18} style={{ cursor: 'pointer' }} />
+            <button className="notion-btn" style={{ border: 'none', background: 'transparent', gap: '6px', color: knowledgeMapOpen ? 'var(--accent)' : 'var(--text-primary)' }} onClick={() => setKnowledgeMapOpen(!knowledgeMapOpen)}>
+                <GitBranch size={16} />
+                Map
+              </button>
             <button className="notion-btn" style={{ border: 'none', background: 'transparent', gap: '6px', color: workflowsOpen ? 'var(--accent)' : 'var(--text-primary)' }} onClick={() => setWorkflowsOpen(!workflowsOpen)}>
               <Zap size={16} fill={workflowsOpen ? 'currentColor' : 'none'} />
               Workflows
@@ -249,6 +289,8 @@ function App() {
         {activePageId && pages.length > 0 && (
           <Canvas
             currentTheme={theme}
+            workspaceTheme={activeTheme}
+            allPages={pages.filter(p => !p.isDeleted)}
             activePage={pages.find(p => p.id === activePageId) || pages[0]}
             onUpdatePage={async (updated: PageData) => {
               try {
@@ -273,6 +315,16 @@ function App() {
         )}
       </div>
 
+      {/* Knowledge Map */}
+      {knowledgeMapOpen && (
+        <KnowledgeMap
+          pages={pages}
+          activePageId={activePageId || ''}
+          onNavigate={(id) => { setActivePageId(id); }}
+          onClose={() => setKnowledgeMapOpen(false)}
+        />
+      )}
+
       {/* Workflow Builder Modal */}
       {workflowsOpen && (
         <WorkflowBuilderModal onClose={() => setWorkflowsOpen(false)} />
@@ -287,7 +339,10 @@ function App() {
       {settingsOpen && (
         <SettingsModal
           theme={theme}
-          toggleTheme={() => setTheme(t => t === 'light' ? 'dark' : 'light')}
+          toggleTheme={handleToggleTheme}
+          activeThemeId={activeThemeId}
+          savedCustomTheme={savedCustomTheme}
+          onThemeChange={handleThemeChange}
           activeWorkspace={workspaces.find(w => w.id === activeWorkspaceId)}
           onUpdateWorkspace={async (ws: WorkspaceData) => {
             try {

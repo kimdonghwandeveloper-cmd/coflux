@@ -3,24 +3,32 @@
 :root {
   --bg-primary: #ffffff;
   --bg-secondary: #f7f7f5;
+  --bg-surface: #ffffff;
+  --sidebar-bg: #f7f7f5;
   --text-primary: #37352f;
   --text-secondary: #787774;
   --border-color: #e9e9e7;
   --accent: #2e2e2e;
   --accent-hover: #1f1f1f;
-  --success: #000000;
+  --success: #22c55e;
+  --warning: #f59e0b;
+  --danger: #e03e3e;
   --error: #e03e3e;
 }
 
 [data-theme='dark'] {
   --bg-primary: #191919;
   --bg-secondary: #202020;
+  --bg-surface: #191919;
+  --sidebar-bg: #202020;
   --text-primary: #ffffff;
   --text-secondary: #9b9a97;
   --border-color: #2f2f2f;
   --accent: #ffffff;
   --accent-hover: #e0e0e0;
-  --success: #ffffff;
+  --success: #22c55e;
+  --warning: #f59e0b;
+  --danger: #eb5757;
   --error: #eb5757;
 }
 
