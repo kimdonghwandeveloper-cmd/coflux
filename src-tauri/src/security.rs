@@ -1,7 +1,3 @@
-// ─── 위험도 임계치 ────────────────────────────────────────────────────────────
-pub const RISK_SAFE: f64 = 0.3;
-pub const RISK_BLOCKED: f64 = 0.7;
-
 /// 보안 스캔 최종 판정
 #[derive(Debug, Clone)]
 pub enum ScanDecision {
