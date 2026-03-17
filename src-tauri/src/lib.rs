@@ -4,6 +4,7 @@ mod clipboard_sync;
 mod db_core;
 mod embeddings;
 mod os_hooks;
+mod web_search;
 mod rag;
 mod script_storage;
 mod security;

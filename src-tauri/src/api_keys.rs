@@ -153,7 +153,7 @@ pub fn coflux_delete_api_key(provider: String) -> Result<(), String> {
 
 /// 외부 AI API를 호출합니다.
 /// API 키는 Rust 레이어에서만 복호화되며 TypeScript에 노출되지 않습니다.
-/// provider: "openai" | "anthropic"
+/// - provider: "openai" | "anthropic" | "brave_search"
 #[tauri::command]
 pub async fn coflux_external_api_call(
     app: tauri::AppHandle,

@@ -15,10 +15,11 @@ pub enum PageScope {
 
 #[derive(Serialize, Debug, Clone)]
 pub struct RagSource {
-    pub page_id: String,
+    pub page_id: Option<String>,
     pub title: String,
     pub chunk_text: String,
     pub score: f32,
+    pub url: Option<String>, // 웹 검색 결과용
 }
 
 #[derive(Serialize)]
@@ -34,37 +35,60 @@ pub async fn coflux_rag_query(
     workspace_id: Option<String>,
     page_id: Option<String>,
     scope: String, // "current", "workspace", "all"
+    include_web: Option<bool>,
 ) -> Result<RagResponse, String> {
-    // 1. 임베딩 기반 검색 및 필터링
-    let results = search_scoped(&app, &query, workspace_id, page_id, scope, 5).await?;
+    // 1. 로컬 임베딩 검색
+    let mut results = search_scoped(&app, &query, workspace_id, page_id, scope, 5).await?;
     
+    // 2. 웹 검색 (선택 사항)
+    let mut web_context = String::new();
+    if include_web.unwrap_or(false) {
+        if let Ok(web_results) = crate::web_search::coflux_web_search(app.clone(), query.clone(), Some(3)).await {
+            let mut i = 0;
+            for res in web_results {
+                results.push(RagSource {
+                    page_id: None,
+                    title: res.title.clone(),
+                    chunk_text: res.snippet.clone(),
+                    score: 0.8,
+                    url: Some(res.url),
+                });
+                web_context.push_str(&format!("--- 웹 검색 결과 {} (제목: {}) ---\n{}\n\n", i + 1, res.title, res.snippet));
+                i += 1;
+            }
+        }
+    }
+
     if results.is_empty() {
         return Ok(RagResponse {
-            answer: "관련된 문서 내용을 찾을 수 없습니다.".to_string(),
+            answer: "관련된 내용을 찾을 수 없습니다.".to_string(),
             sources: vec![],
         });
     }
 
-    // 3. 컨텍스트 구성
-    let mut context_text = String::new();
-    for (i, src) in results.iter().enumerate() {
-        context_text.push_str(&format!("--- 문서 {} (제목: {}) ---\n{}\n\n", i + 1, src.title, src.chunk_text));
+    // 3. 통합 컨텍스트 구성
+    let mut local_context = String::new();
+    let local_results: Vec<_> = results.iter().filter(|r| r.page_id.is_some()).collect();
+    for (i, src) in local_results.iter().enumerate() {
+        local_context.push_str(&format!("--- 로컬 문서 {} (제목: {}) ---\n{}\n\n", i + 1, src.title, src.chunk_text));
     }
 
     let prompt = format!(
         "[시스템]\n\
         당신은 CoFlux 워크스페이스 AI 어시스턴트입니다.\n\
-        아래 문서 컨텍스트를 바탕으로 사용자의 질문에 답변하세요.\n\
+        아래 제공된 [로컬 문서 컨텍스트]와 [웹 검색 컨텍스트]를 바탕으로 사용자의 질문에 답변하세요.\n\
+        로컬 문서를 우선적으로 참고하고, 웹 검색 결과는 최신 정보나 보조 자료로 활용하세요.\n\
         컨텍스트에 없는 내용이면 솔직히 모른다고 하세요.\n\n\
-        [컨텍스트]\n\
+        [로컬 문서 컨텍스트]\n\
+        {}\n\
+        [웹 검색 컨텍스트]\n\
         {}\n\
         [질문]\n\
         {}",
-        context_text, query
+        local_context, web_context, query
     );
 
-    // 4. LLM 호출 (기존 api_keys.rs의 coflux_external_api_call 재사용)
-    // provider는 일단 openai로 고정하거나 pick_provider 로직 사용 가능
+    // 4. LLM 호출
     let answer = crate::api_keys::coflux_external_api_call(app, "openai".to_string(), prompt).await?;
 
     Ok(RagResponse {
@@ -129,10 +153,11 @@ async fn search_scoped(
             let emb = blob_to_embedding(&blob);
             let score = cosine_similarity(&query_embedding, &emb);
             scored.push(RagSource {
-                page_id: pid,
+                page_id: Some(pid),
                 title,
                 chunk_text: text,
                 score,
+                url: None,
             });
         }
     }
