@@ -4,6 +4,7 @@ import { webrtcClient } from '../lib/webrtc_client';
 import { sharedChat, getEncodedYjsUpdateString, applyIncomingYjsUpdate } from '../lib/crdt_store';
 import { routeAiTask } from '../lib/ai_router';
 import { listen, UnlistenFn } from '@tauri-apps/api/event';
+import { invoke } from '@tauri-apps/api/core';
 import { ragQuery, PageScope, RagSource } from '../lib/rag';
 
 interface Message {
@@ -27,6 +28,7 @@ export const AiChatWidget = ({
   const [messages, setMessages] = useState<Message[]>(sharedChat.toArray());
   const [input, setInput] = useState('');
   const [ragScope, setRagScope] = useState<PageScope | 'off'>('off');
+  const [includeWeb, setIncludeWeb] = useState(false);
   const [isQuerying, setIsQuerying] = useState(false);
   
   // 1. Bind Yjs CRDT instance to React State
@@ -72,10 +74,10 @@ export const AiChatWidget = ({
       let sources: RagSource[] | undefined = undefined;
 
       if (ragScope !== 'off') {
-        // RAG Query
-        const resp = await ragQuery(userQuery, ragScope, workspaceId, pageId);
+        // RAG Query (with optional Web Search)
+        const resp = await ragQuery(userQuery, ragScope, includeWeb, workspaceId, pageId);
         aiRespText = resp.answer;
-        routedTo = 'RAG Assistant';
+        routedTo = includeWeb ? 'AI Search Assistant' : 'RAG Assistant';
         sources = resp.sources;
       } else {
         // Standard AI Router
@@ -104,6 +106,14 @@ export const AiChatWidget = ({
     }
   };
 
+  const openUrl = async (url: string) => {
+    try {
+      await invoke('tauri_plugin_shell_open', { path: url });
+    } catch (e) {
+      window.open(url, '_blank');
+    }
+  };
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', padding: '12px', boxSizing: 'border-box' }}>
       <div style={{ flex: 1, overflowY: 'auto', marginBottom: '12px', padding: '8px', backgroundColor: 'var(--bg-secondary)', border: '1px solid var(--border-color)', borderRadius: '8px' }}>
@@ -128,8 +138,11 @@ export const AiChatWidget = ({
                 <div style={{ marginTop: '10px', paddingTop: '8px', borderTop: '1px solid rgba(255,255,255,0.2)', fontSize: '11px' }}>
                   <div style={{ fontWeight: 'bold', marginBottom: '4px' }}>Sources:</div>
                   {m.sources.map((s: RagSource, idx: number) => (
-                    <div key={idx} style={{ opacity: 0.9, marginBottom: '2px', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                      <Search size={10} /> {s.title}
+                    <div 
+                      key={idx} 
+                      onClick={() => s.url && openUrl(s.url)}
+                      style={{ opacity: 0.9, marginBottom: '2px', display: 'flex', alignItems: 'center', gap: '4px', cursor: s.url ? 'pointer' : 'default', textDecoration: s.url ? 'underline' : 'none' }}>
+                      {s.url ? <Globe size={10} /> : <Search size={10} />} {s.title}
                     </div>
                   ))}
                 </div>
@@ -147,35 +160,62 @@ export const AiChatWidget = ({
         )}
       </div>
 
-      <div style={{ display: 'flex', gap: '4px', marginBottom: '8px', padding: '4px', backgroundColor: 'var(--bg-secondary)', borderRadius: '8px', border: '1px solid var(--border-color)' }}>
-        {[
-          { id: 'off', icon: <Search size={14} />, label: 'Chat' },
-          { id: 'current', icon: <Layout size={14} />, label: 'Page' },
-          { id: 'workspace', icon: <Database size={14} />, label: 'WS' },
-          { id: 'all', icon: <Globe size={14} />, label: 'All' },
-        ].map(s => (
+      <div style={{ display: 'flex', gap: '4px', marginBottom: '8px', padding: '4px', backgroundColor: 'var(--bg-secondary)', borderRadius: '8px', border: '1px solid var(--border-color)', alignItems: 'center' }}>
+        <div style={{ display: 'flex', gap: '4px', flex: 1 }}>
+          {[
+            { id: 'off', icon: <Search size={14} />, label: 'Chat' },
+            { id: 'current', icon: <Layout size={14} />, label: 'Page' },
+            { id: 'workspace', icon: <Database size={14} />, label: 'WS' },
+            { id: 'all', icon: <Globe size={14} />, label: 'All' },
+          ].map(s => (
+            <button
+              key={s.id}
+              onClick={() => setRagScope(s.id as any)}
+              style={{
+                flex: 1,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '6px',
+                padding: '6px',
+                fontSize: '11px',
+                borderRadius: '6px',
+                border: 'none',
+                cursor: 'pointer',
+                backgroundColor: ragScope === s.id ? 'var(--accent)' : 'transparent',
+                color: ragScope === s.id ? 'white' : 'var(--text-secondary)',
+                transition: 'all 0.2s ease',
+              }}
+            >
+              {s.icon} {s.label}
+            </button>
+          ))}
+        </div>
+        
+        {ragScope !== 'off' && (
           <button
-            key={s.id}
-            onClick={() => setRagScope(s.id as any)}
+            onClick={() => setIncludeWeb(!includeWeb)}
+            title="웹 검색 포함"
             style={{
-              flex: 1,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: '6px',
               padding: '6px',
-              fontSize: '11px',
               borderRadius: '6px',
               border: 'none',
               cursor: 'pointer',
-              backgroundColor: ragScope === s.id ? 'var(--accent)' : 'transparent',
-              color: ragScope === s.id ? 'white' : 'var(--text-secondary)',
-              transition: 'all 0.2s ease',
+              backgroundColor: includeWeb ? 'var(--accent)' : 'transparent',
+              color: includeWeb ? 'white' : 'var(--text-secondary)',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '4px',
+              fontSize: '11px',
+              fontWeight: 500,
+              marginLeft: '4px',
+              borderLeft: '1px solid var(--border-color)',
+              paddingLeft: '8px'
             }}
           >
-            {s.icon} {s.label}
+            <Globe size={14} /> Web
           </button>
-        ))}
+        )}
       </div>
 
       <div style={{ display: 'flex', gap: '8px' }}>

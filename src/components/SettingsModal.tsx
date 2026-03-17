@@ -22,6 +22,7 @@ const COLOR_FIELDS: { key: keyof ThemeColors; label: string }[] = [
 const PROVIDERS = [
   { id: 'openai', label: 'OpenAI', placeholder: 'sk-...' },
   { id: 'anthropic', label: 'Anthropic', placeholder: 'sk-ant-...' },
+  { id: 'brave_search', label: 'Brave Search', placeholder: 'Brave API Key' },
 ] as const;
 type ProviderId = (typeof PROVIDERS)[number]['id'];
 
