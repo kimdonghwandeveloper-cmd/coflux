@@ -12,6 +12,8 @@ use webrtc::peer_connection::RTCPeerConnection;
 pub struct WebRtcState {
     pub pc: Arc<Mutex<Option<Arc<RTCPeerConnection>>>>,
     pub dc: Arc<Mutex<Option<Arc<RTCDataChannel>>>>,
+    /// AI P2P 채널 (모바일 AI 요청/응답 전용)
+    pub ai_dc: Arc<Mutex<Option<Arc<RTCDataChannel>>>>,
 }
 
 impl Default for WebRtcState {
@@ -25,6 +27,7 @@ impl WebRtcState {
         Self {
             pc: Arc::new(Mutex::new(None)),
             dc: Arc::new(Mutex::new(None)),
+            ai_dc: Arc::new(Mutex::new(None)),
         }
     }
 }
@@ -54,7 +57,7 @@ pub async fn generate_offer(
             .map_err(|e| e.to_string())?,
     );
 
-    // Create DataChannel
+    // Create DataChannels
     let dc = pc
         .create_data_channel("coflux_data", None)
         .await
@@ -71,17 +74,28 @@ pub async fn generate_offer(
     let app_handle_clone2 = app_handle.clone();
     dc.on_message(Box::new(move |msg| {
         let text = String::from_utf8(msg.data.to_vec()).unwrap_or_default();
-        match crate::security::scan_ingress_payload(text) {
-            Ok(safe_text) => {
-                let _ = app_handle_clone2.emit("webrtc-msg", safe_text);
-            }
-            Err(e) => {
-                eprintln!("Blocked maliciously formed P2P packet: {}", e);
-                let _ = app_handle_clone2.emit("webrtc-msg-error", e);
-            }
-        }
+        emit_scan_result(&app_handle_clone2, text);
         Box::pin(async {})
     }));
+
+    // AI DataChannel (모바일 AI 요청/응답 전용)
+    let ai_dc = pc
+        .create_data_channel("ai", None)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let ai_dc_clone = ai_dc.clone();
+    let ah_ai = app_handle.clone();
+    ai_dc.on_message(Box::new(move |msg| {
+        let dc_ref = ai_dc_clone.clone();
+        let app_ref = ah_ai.clone();
+        tokio::spawn(async move {
+            crate::ai_channel::handle_ai_channel_message(app_ref, dc_ref, msg).await;
+        });
+        Box::pin(async {})
+    }));
+
+    let ai_dc_state = ai_dc.clone();
 
     let mut gather_complete = pc.gathering_complete_promise().await;
 
@@ -98,6 +112,7 @@ pub async fn generate_offer(
 
     *state.pc.lock().await = Some(pc);
     *state.dc.lock().await = Some(dc_clone);
+    *state.ai_dc.lock().await = Some(ai_dc_state);
 
     crate::clipboard_sync::write_sdp(&sdp_json)?;
 
@@ -118,26 +133,35 @@ pub async fn accept_offer(
 
     let app_handle_clone = app_handle.clone();
     pc.on_data_channel(Box::new(move |dc| {
-        let ah_open = app_handle_clone.clone();
-        dc.on_open(Box::new(move || {
-            let _ = ah_open.emit("webrtc-open", ());
-            Box::pin(async {})
-        }));
+        let label = dc.label().to_string();
+        let ah = app_handle_clone.clone();
 
-        let ah_msg = app_handle_clone.clone();
-        dc.on_message(Box::new(move |msg| {
-            let text = String::from_utf8(msg.data.to_vec()).unwrap_or_default();
-            match crate::security::scan_ingress_payload(text) {
-                Ok(safe_text) => {
-                    let _ = ah_msg.emit("webrtc-msg", safe_text);
-                }
-                Err(e) => {
-                    eprintln!("Blocked maliciously formed P2P packet: {}", e);
-                    let _ = ah_msg.emit("webrtc-msg-error", e);
-                }
-            }
-            Box::pin(async {})
-        }));
+        if label == "ai" {
+            // AI 채널: 모바일 AI 요청 처리
+            let dc_ai = dc.clone();
+            dc.on_message(Box::new(move |msg| {
+                let dc_ref = dc_ai.clone();
+                let app_ref = ah.clone();
+                tokio::spawn(async move {
+                    crate::ai_channel::handle_ai_channel_message(app_ref, dc_ref, msg).await;
+                });
+                Box::pin(async {})
+            }));
+        } else {
+            // coflux_data 채널: 기존 보안 스캔 경로
+            let ah_open = ah.clone();
+            dc.on_open(Box::new(move || {
+                let _ = ah_open.emit("webrtc-open", ());
+                Box::pin(async {})
+            }));
+
+            let ah_msg = ah.clone();
+            dc.on_message(Box::new(move |msg| {
+                let text = String::from_utf8(msg.data.to_vec()).unwrap_or_default();
+                emit_scan_result(&ah_msg, text);
+                Box::pin(async {})
+            }));
+        }
         Box::pin(async {})
     }));
 
@@ -181,6 +205,29 @@ pub async fn accept_answer(
     Ok(())
 }
 
+/// 수신 메시지를 보안 스캔(Layer 1 룰베이스) 후 이벤트를 발행합니다.
+/// - SAFE    → `webrtc-msg`
+/// - BLOCKED → `webrtc-msg-blocked`
+fn emit_scan_result(app: &tauri::AppHandle, payload: String) {
+    use crate::security::ScanDecision;
+    use serde::Serialize;
+
+    #[derive(Serialize, Clone)]
+    struct BlockedPayload {
+        explanation: String,
+    }
+
+    match crate::security::scan_ingress_payload(payload) {
+        ScanDecision::Safe(text) => {
+            let _ = app.emit("webrtc-msg", text);
+        }
+        ScanDecision::Blocked { explanation } => {
+            eprintln!("[Security] BLOCKED: {}", &explanation[..explanation.len().min(120)]);
+            let _ = app.emit("webrtc-msg-blocked", BlockedPayload { explanation });
+        }
+    }
+}
+
 #[derive(Serialize, Deserialize)]
 pub struct PeerInfo {
     pub id: String,
@@ -220,6 +267,11 @@ pub async fn close_connection(
 ) -> Result<(), String> {
     let mut dc_lock = state.dc.lock().await;
     if let Some(dc) = dc_lock.take() {
+        let _ = dc.close().await;
+    }
+
+    let mut ai_dc_lock = state.ai_dc.lock().await;
+    if let Some(dc) = ai_dc_lock.take() {
         let _ = dc.close().await;
     }
 

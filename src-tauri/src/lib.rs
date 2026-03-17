@@ -1,3 +1,5 @@
+mod ai_channel;
+mod api_keys;
 mod clipboard_sync;
 mod db_core;
 mod os_hooks;
@@ -54,6 +56,9 @@ pub fn run() {
             if let Err(e) = script_storage::init_script_tables() {
                 eprintln!("Failed to init script tables: {}", e);
             }
+            if let Err(e) = api_keys::init_api_key_table() {
+                eprintln!("Failed to init api_keys table: {}", e);
+            }
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -87,7 +92,11 @@ pub fn run() {
             script_storage::delete_user_script,
             script_storage::script_storage_get,
             script_storage::script_storage_set,
-            script_storage::script_storage_delete
+            script_storage::script_storage_delete,
+            api_keys::coflux_register_api_key,
+            api_keys::coflux_has_api_key,
+            api_keys::coflux_delete_api_key,
+            api_keys::coflux_external_api_call
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
