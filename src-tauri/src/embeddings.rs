@@ -103,7 +103,7 @@ fn chunk_text(text: &str, max_chars: usize) -> Vec<String> {
     chunks
 }
 
-fn cosine_similarity(a: &[f32], b: &[f32]) -> f32 {
+pub(crate) fn cosine_similarity(a: &[f32], b: &[f32]) -> f32 {
     let dot: f32 = a.iter().zip(b.iter()).map(|(x, y)| x * y).sum();
     let mag_a = a.iter().map(|x| x * x).sum::<f32>().sqrt();
     let mag_b = b.iter().map(|x| x * x).sum::<f32>().sqrt();
@@ -117,13 +117,13 @@ fn embedding_to_blob(embedding: &[f32]) -> Vec<u8> {
     embedding.iter().flat_map(|f| f.to_le_bytes()).collect()
 }
 
-fn blob_to_embedding(blob: &[u8]) -> Vec<f32> {
+pub(crate) fn blob_to_embedding(blob: &[u8]) -> Vec<f32> {
     blob.chunks_exact(4)
         .map(|c| f32::from_le_bytes([c[0], c[1], c[2], c[3]]))
         .collect()
 }
 
-async fn call_openai_embeddings(text: &str, api_key: &str) -> Result<Vec<f32>, String> {
+pub(crate) async fn call_openai_embeddings(text: &str, api_key: &str) -> Result<Vec<f32>, String> {
     let _permit = EMBED_SEM.acquire().await.map_err(|e| e.to_string())?;
     let client = reqwest::Client::new();
     let body = serde_json::json!({

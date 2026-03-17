@@ -4,6 +4,7 @@ mod clipboard_sync;
 mod db_core;
 mod embeddings;
 mod os_hooks;
+mod rag;
 mod script_storage;
 mod security;
 mod theme_store;
@@ -113,6 +114,7 @@ pub fn run() {
             embeddings::coflux_get_backlinks,
             embeddings::coflux_get_outlinks,
             embeddings::coflux_get_all_links,
+            rag::coflux_rag_query,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
