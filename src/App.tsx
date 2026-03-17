@@ -282,7 +282,12 @@ function App() {
 
         {chatOpen && (
           <div style={{ position: 'absolute', top: '70px', right: '24px', zIndex: 100, width: '360px', height: '500px', background: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '12px', boxShadow: '0 8px 30px rgba(0,0,0,0.12)', display: 'flex', flexDirection: 'column', overflow: 'hidden', animation: 'slideUpFade 0.3s ease-out forwards' }}>
-            <AiChatWidget connState="Connected!" pageTitle={pages.find(p => p.id === activePageId)?.title} />
+            <AiChatWidget 
+              connState="Connected!" 
+              pageTitle={pages.find(p => p.id === activePageId)?.title}
+              pageId={activePageId || undefined}
+              workspaceId={activeWorkspaceId || undefined}
+            />
           </div>
         )}
 

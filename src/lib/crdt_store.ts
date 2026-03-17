@@ -4,7 +4,7 @@ import { invoke } from '@tauri-apps/api/core';
 // Represents the shared Atomic Handover document
 export const ydoc = new Y.Doc();
 // A shared array of chat strings
-export const sharedChat = ydoc.getArray<{sender: string, text: string, type: string}>('chat_logs');
+export const sharedChat = ydoc.getArray<{sender: string, text: string, type: string, sources?: any[]}>('chat_logs');
 
 // Listen to local changes and sync to SQLite via Tauri IPC
 ydoc.on('update', async (updateArray) => {
