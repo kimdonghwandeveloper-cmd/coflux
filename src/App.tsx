@@ -81,10 +81,18 @@ function App() {
 
       const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
         if (session?.user) {
+          // Supabase DB에서 최신 티어 정보 가져오기
+          const { data: dbUser } = await supabase
+            .from('users')
+            .select('tier, stripe_customer_id')
+            .eq('id', session.user.id)
+            .single();
+
           const profile: UserProfile = {
             id: session.user.id,
             email: session.user.email,
-            tier: 'free',
+            tier: dbUser?.tier || 'free',
+            stripe_customer_id: dbUser?.stripe_customer_id,
           };
           setUser(profile);
           await invoke('coflux_sync_user_profile', { user: profile });

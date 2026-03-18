@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { Moon, Sun, X, Key, Check, Trash2, Eye, EyeOff, Palette, User, CreditCard, Layout, Zap } from 'lucide-react';
+import { Moon, Sun, X, Key, Check, Trash2, Eye, EyeOff, Palette, User, CreditCard, Layout, Zap, Github } from 'lucide-react';
 import { WorkspaceData } from '../App';
 import { PRESET_THEMES, TOGGLE_THEME_IDS, WorkspaceTheme, ThemeColors } from '../lib/theme';
 import { UserProfile, supabase } from '../lib/supabase';
@@ -120,6 +120,19 @@ function ApiKeyRow({ provider, label, placeholder }: { provider: ProviderId; lab
   );
 }
 
+const FeatureItem = ({ text, active }: { text: string; active: boolean }) => (
+  <li style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+    {active ? (
+      <Check size={12} style={{ color: 'var(--accent)' }} />
+    ) : (
+      <X size={12} style={{ color: 'var(--text-secondary)', opacity: 0.5 }} />
+    )}
+    <span style={{ fontSize: '11px', color: active ? 'var(--text-primary)' : 'var(--text-secondary)', opacity: active ? 1 : 0.6 }}>
+      {text}
+    </span>
+  </li>
+);
+
 export const SettingsModal = ({
   user,
   theme,
@@ -156,8 +169,21 @@ export const SettingsModal = ({
     onThemeChange('custom', custom);
   };
 
-  const handleLogin = async () => {
-    // Supabase Magic Link 또는 OAuth 호출 (PM님이 설정 완료 후 작동)
+  const handleSocialLogin = async (provider: 'google' | 'github') => {
+    try {
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider,
+        options: {
+          redirectTo: window.location.origin, // 데스크톱 환경 리다이렉트
+        }
+      });
+      if (error) throw error;
+    } catch (e) {
+      alert(`${provider} 로그인 실패: ` + e);
+    }
+  };
+
+  const handleMagicLinkLogin = async () => {
     const email = window.prompt('로그인할 이메일을 입력하세요:');
     if (email) {
       const { error } = await supabase.auth.signInWithOtp({ email });
@@ -362,13 +388,37 @@ export const SettingsModal = ({
                     </div>
                   ) : (
                     <div style={{ textAlign: 'center', padding: '10px 0' }}>
-                      <p style={{ fontSize: '14px', color: 'var(--text-secondary)', marginBottom: '16px' }}>로그인하여 기기 간 동기화 및 Pro 기능을 사용하세요.</p>
-                      <button 
-                        onClick={handleLogin}
-                        style={{ padding: '10px 24px', borderRadius: '8px', border: 'none', background: 'var(--accent)', color: 'white', fontWeight: 600, fontSize: '14px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', margin: '0 auto' }}
-                      >
-                        <Layout size={16} /> Sign in to CoFlux
-                      </button>
+                      <p style={{ fontSize: '14px', color: 'var(--text-secondary)', marginBottom: '20px' }}>로그인하여 기기 간 동기화 및 Pro 기능을 사용하세요.</p>
+                      
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', maxWidth: '280px', margin: '0 auto' }}>
+                        <button 
+                          onClick={() => handleSocialLogin('google')}
+                          style={{ width: '100%', padding: '10px 16px', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'white', color: '#333', fontWeight: 600, fontSize: '14px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px' }}
+                        >
+                          <svg width="18" height="18" viewBox="0 0 24 24"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z" fill="#FBBC05"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/><path d="M1 1h22v22H1z" fill="none"/></svg>
+                          Continue with Google
+                        </button>
+                        
+                        <button 
+                          onClick={() => handleSocialLogin('github')}
+                          style={{ width: '100%', padding: '10px 16px', borderRadius: '8px', border: 'none', background: '#24292e', color: 'white', fontWeight: 600, fontSize: '14px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px' }}
+                        >
+                          <Github size={18} /> Continue with GitHub
+                        </button>
+
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', margin: '10px 0' }}>
+                          <div style={{ flex: 1, height: '1px', background: 'var(--border-color)' }}></div>
+                          <span style={{ fontSize: '11px', color: 'var(--text-secondary)', textTransform: 'uppercase' }}>or</span>
+                          <div style={{ flex: 1, height: '1px', background: 'var(--border-color)' }}></div>
+                        </div>
+
+                        <button 
+                          onClick={handleMagicLinkLogin}
+                          style={{ width: '100%', padding: '10px 16px', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'var(--bg-primary)', color: 'var(--text-primary)', fontWeight: 500, fontSize: '13px', cursor: 'pointer' }}
+                        >
+                          Email Magic Link
+                        </button>
+                      </div>
                     </div>
                   )}
                 </div>
@@ -406,6 +456,36 @@ export const SettingsModal = ({
                         ? '모든 프리미엄 기능을 사용 중입니다. 무제한 AI 질문과 클라우드 동기화가 활성화되어 있습니다.' 
                         : '기본 기능을 무료로 이용 중입니다. Pro로 업그레이드하여 더 강력한 AI와 클라우드 동기화를 경험하세요.'}
                     </p>
+                  </div>
+                </div>
+
+                {/* 플랜 비교 리스트 */}
+                <div style={{ marginTop: '24px' }}>
+                  <h4 style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '12px', paddingLeft: '4px' }}>Plan Comparison</h4>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                    {/* Free Plan Features */}
+                    <div style={{ padding: '16px', background: 'var(--bg-secondary)', borderRadius: '12px', border: '1px solid var(--border-color)' }}>
+                      <div style={{ fontSize: '13px', fontWeight: 600, marginBottom: '12px', color: 'var(--text-primary)' }}>Free</div>
+                      <ul style={{ listStyle: 'none', padding: 0, margin: 0, spaceY: '8px' } as any}>
+                        <FeatureItem text="기본 AI 모델 이용" active />
+                        <FeatureItem text="로컬 데이터 저장" active />
+                        <FeatureItem text="클라우드 동기화" active={false} />
+                        <FeatureItem text="무제한 AI 질문" active={false} />
+                      </ul>
+                    </div>
+
+                    {/* Pro Plan Features */}
+                    <div style={{ padding: '16px', background: 'rgba(var(--accent-rgb), 0.05)', borderRadius: '12px', border: '1px solid var(--accent)', position: 'relative' }}>
+                      <div style={{ fontSize: '13px', fontWeight: 600, marginBottom: '12px', color: 'var(--accent)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        Pro <Zap size={12} fill="currentColor" />
+                      </div>
+                      <ul style={{ listStyle: 'none', padding: 0, margin: 0, spaceY: '8px' } as any}>
+                        <FeatureItem text="최신 고급 AI 모델" active />
+                        <FeatureItem text="실시간 클라우드 동기화" active />
+                        <FeatureItem text="무제한 AI 질문 & 컨텍스트" active />
+                        <FeatureItem text="우선 순위 지원" active />
+                      </ul>
+                    </div>
                   </div>
                 </div>
               </div>
