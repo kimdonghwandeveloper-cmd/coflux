@@ -177,7 +177,7 @@ const ThemeBubble = ({ color, size, active, label, top, left, onClick, onMouseDo
   <div 
     onClick={onClick}
     onMouseDown={onMouseDown}
-    style={{ position: 'absolute', top, left, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px', zIndex: 2, cursor: 'grab', transition: 'left 0.1s linear' }}
+    style={{ position: 'absolute', top, left, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px', zIndex: 2, cursor: 'grab', transition: 'all 0.1s linear' }}
   >
     <div style={{ 
       width: size + 'px', 
@@ -242,8 +242,11 @@ export const SettingsModal = ({
     if (!draggingField) return;
     const rect = e.currentTarget.getBoundingClientRect();
     const x = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
-    // X 좌표를 Hue (0-360)에 매핑
-    updateHsl(draggingField, { h: x * 360 });
+    const y = Math.max(0, Math.min(1, (e.clientY - rect.top) / rect.height));
+    
+    // X 좌표 -> Hue (0-360)
+    // Y 좌표 -> Saturation (0-100, 위로 갈수록 진하게: 1-y)
+    updateHsl(draggingField, { h: x * 360, s: (1 - y) * 100 });
   };
 
   const handleDragEnd = () => {
@@ -431,7 +434,7 @@ export const SettingsModal = ({
                     border: '1px solid var(--border-color)',
                     position: 'relative',
                     overflow: 'hidden',
-                    minHeight: '340px',
+                    minHeight: '520px',
                     display: 'flex',
                     flexDirection: 'column',
                     userSelect: 'none'
@@ -442,7 +445,7 @@ export const SettingsModal = ({
                     position: 'absolute', 
                     inset: 0, 
                     backgroundImage: 'radial-gradient(var(--border-color) 1px, transparent 1px)', 
-                    backgroundSize: '20px 20px', 
+                    backgroundSize: '25px 25px', 
                     opacity: 0.1,
                     pointerEvents: 'none'
                   }}></div>
@@ -461,34 +464,34 @@ export const SettingsModal = ({
                   </div>
 
                   {/* 중앙 인터랙티브 버블 (주요 색상 선택) */}
-                  <div style={{ flex: 1, position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '40px' }}>
+                  <div style={{ flex: 1, position: 'relative', marginBottom: '40px' }}>
                     <ThemeBubble 
                       color={editColors.bgPrimary} 
-                      size={70} 
+                      size={54} 
                       active={selectedField === 'bgPrimary'} 
                       label="Background" 
-                      top="20%" 
-                      left={`calc(${(hexToHsl(editColors.bgPrimary).h / 360) * 100}% - 35px)`} 
+                      top={`${(1 - hexToHsl(editColors.bgPrimary).s / 100) * 100}%`} 
+                      left={`calc(${(hexToHsl(editColors.bgPrimary).h / 360) * 100}% - 27px)`} 
                       onClick={() => setSelectedField('bgPrimary')} 
                       onMouseDown={(e) => handleDragStart(e, 'bgPrimary')}
                     />
                     <ThemeBubble 
                       color={editColors.accent} 
-                      size={40} 
+                      size={36} 
                       active={selectedField === 'accent'} 
                       label="Accent" 
-                      top="10%" 
-                      left={`calc(${(hexToHsl(editColors.accent).h / 360) * 100}% - 20px)`} 
+                      top={`${(1 - hexToHsl(editColors.accent).s / 100) * 100}%`} 
+                      left={`calc(${(hexToHsl(editColors.accent).h / 360) * 100}% - 18px)`} 
                       onClick={() => setSelectedField('accent')} 
                       onMouseDown={(e) => handleDragStart(e, 'accent')}
                     />
                     <ThemeBubble 
                       color={editColors.textPrimary} 
-                      size={25} 
+                      size={24} 
                       active={selectedField === 'textPrimary'} 
                       label="Text" 
-                      top="45%" 
-                      left={`calc(${(hexToHsl(editColors.textPrimary).h / 360) * 100}% - 12.5px)`} 
+                      top={`${(1 - hexToHsl(editColors.textPrimary).s / 100) * 100}%`} 
+                      left={`calc(${(hexToHsl(editColors.textPrimary).h / 360) * 100}% - 12px)`} 
                       onClick={() => setSelectedField('textPrimary')} 
                       onMouseDown={(e) => handleDragStart(e, 'textPrimary')}
                     />
