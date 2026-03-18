@@ -237,7 +237,7 @@ export const SettingsModal = ({
   // 시각적 좌표 상태 (H, L 매핑용 - 무채색 시 Hue 보존 및 조절 바 조작 시 위치 고정용)
   const [visualPositions, setVisualPositions] = useState<{ [key in keyof ThemeColors]: { x: number, y: number } }>(() => {
     const init: any = {};
-    (['bgPrimary', 'accent', 'textPrimary'] as const).forEach(k => {
+    (['bgPrimary', 'bgSecondary', 'accent', 'textPrimary'] as const).forEach(k => {
       const hsl = hexToHsl(baseColors[k]);
       // Y축 클램핑: 명도가 범위를 벗어나도 0-100% 내에 머물게 함
       const y = Math.max(0, Math.min(100, (80 - hsl.l) / 50 * 100));
@@ -332,17 +332,14 @@ export const SettingsModal = ({
   const handleColorChange = (key: keyof ThemeColors, value: string, syncVisual = false) => {
     const newColors = { ...editColors, [key]: value };
     
-    // E23: bgPrimary 변경 시 파생 색상 자동 계산 (톤온톤 매칭)
+    // E24: bgPrimary 변경 시 bgSurface는 동기화하되, E23 자동 연동 로직 롤백
     if (key === 'bgPrimary') {
-      const hsl = hexToHsl(value);
-      const isLight = hsl.l > 50;
-      const dl = isLight ? -4 : 5;
-      const derivedL = Math.max(0, Math.min(100, hsl.l + dl));
-      
-      const derivedColor = hslToHex(hsl.h, hsl.s, derivedL);
-      newColors.bgSecondary = derivedColor;
-      newColors.sidebarBg = derivedColor;
       newColors.bgSurface = value;
+    }
+
+    // E24: bgSecondary 변경 시 sidebarBg 동기화 (직접 조작용)
+    if (key === 'bgSecondary') {
+      newColors.sidebarBg = value;
     }
     
     setEditColors(newColors);
@@ -575,6 +572,17 @@ export const SettingsModal = ({
                       left={`calc(${visualPositions.bgPrimary.x}% - 27px)`} 
                       onClick={() => setSelectedField('bgPrimary')} 
                       onMouseDown={(e) => handleDragStart(e, 'bgPrimary')}
+                    />
+                    <ThemeBubble 
+                      color={editColors.bgSecondary} 
+                      size={44} 
+                      isDragging={draggingField === 'bgSecondary'}
+                      active={selectedField === 'bgSecondary'} 
+                      label="Sidebar" 
+                      top={`${visualPositions.bgSecondary?.y || 50}%`} 
+                      left={`calc(${visualPositions.bgSecondary?.x || 50}% - 22px)`} 
+                      onClick={() => setSelectedField('bgSecondary')} 
+                      onMouseDown={(e) => handleDragStart(e, 'bgSecondary')}
                     />
                     <ThemeBubble 
                       color={editColors.accent} 
