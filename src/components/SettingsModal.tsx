@@ -234,6 +234,16 @@ export const SettingsModal = ({
   const [isDraggingSlider, setIsDraggingSlider] = useState(false);
   const [isDraggingKnob, setIsDraggingKnob] = useState(false);
 
+  // 시각적 좌표 상태 (H, L 매핑용 - 무채색 시 Hue 보존 및 조절 바 조작 시 위치 고정용)
+  const [visualPositions, setVisualPositions] = useState<{ [key in keyof ThemeColors]: { x: number, y: number } }>(() => {
+    const init: any = {};
+    (['bgPrimary', 'accent', 'textPrimary'] as const).forEach(k => {
+      const hsl = hexToHsl(baseColors[k]);
+      init[k] = { x: (hsl.h / 360) * 100, y: (80 - hsl.l) / 50 * 100 };
+    });
+    return init;
+  });
+
   // HSL 조절 헬퍼
   const updateHsl = (key: keyof ThemeColors, { h, s, l }: { h?: number; s?: number; l?: number }) => {
     const currentHsl = hexToHsl(editColors[key]);
@@ -258,7 +268,10 @@ export const SettingsModal = ({
         // X -> Hue (0-360)
         // Y -> Lightness (위로 갈수록 밝아짐: 80 - 30 범위 매핑)
         const l = 80 - (y * 50); 
-        updateHsl(draggingField, { h: x * 360, l });
+        const h = x * 360;
+        
+        setVisualPositions(prev => ({ ...prev, [draggingField]: { x: x * 100, y: y * 100 } }));
+        updateHsl(draggingField, { h, l });
       } else if (isDraggingSlider) {
         const slider = document.getElementById('saturation-slider');
         if (!slider) return;
@@ -311,18 +324,23 @@ export const SettingsModal = ({
     setDraggingField(key);
   };
 
-  const handleColorChange = (key: keyof ThemeColors, value: string) => {
+  const handleColorChange = (key: keyof ThemeColors, value: string, syncVisual = false) => {
     const newColors = { ...editColors, [key]: value };
     setEditColors(newColors);
     
-    // 실시간 반영: 'Apply' 버튼 없이 즉시 적용
-    const custom: WorkspaceTheme = { 
-      id: 'custom', 
-      name: 'Custom', 
-      isDark: isDarkCustom, 
-      colors: newColors 
-    };
-    onThemeChange('custom', custom);
+    if (syncVisual) {
+      const hsl = hexToHsl(value);
+      setVisualPositions(prev => ({
+        ...prev,
+        [key]: { x: (hsl.h / 360) * 100, y: (80 - hsl.l) / 50 * 100 }
+      }));
+    }
+
+    if (savedCustomTheme) {
+      onThemeChange('custom', { ...savedCustomTheme, colors: newColors, isDark: isDarkCustom });
+    } else {
+      onThemeChange('custom', { id: 'custom', name: 'Custom Theme', colors: newColors, isDark: isDarkCustom });
+    }
   };
 
   const handleModeChange = (isDark: boolean) => {
@@ -527,8 +545,8 @@ export const SettingsModal = ({
                       isDragging={draggingField === 'bgPrimary'}
                       active={selectedField === 'bgPrimary'} 
                       label="Background" 
-                      top={`${(80 - hexToHsl(editColors.bgPrimary).l) / 50 * 100}%`} 
-                      left={`calc(${(hexToHsl(editColors.bgPrimary).h / 360) * 100}% - 27px)`} 
+                      top={`${visualPositions.bgPrimary.y}%`} 
+                      left={`calc(${visualPositions.bgPrimary.x}% - 27px)`} 
                       onClick={() => setSelectedField('bgPrimary')} 
                       onMouseDown={(e) => handleDragStart(e, 'bgPrimary')}
                     />
@@ -538,8 +556,8 @@ export const SettingsModal = ({
                       isDragging={draggingField === 'accent'}
                       active={selectedField === 'accent'} 
                       label="Accent" 
-                      top={`${(80 - hexToHsl(editColors.accent).l) / 50 * 100}%`} 
-                      left={`calc(${(hexToHsl(editColors.accent).h / 360) * 100}% - 18px)`} 
+                      top={`${visualPositions.accent.y}%`} 
+                      left={`calc(${visualPositions.accent.x}% - 18px)`} 
                       onClick={() => setSelectedField('accent')} 
                       onMouseDown={(e) => handleDragStart(e, 'accent')}
                     />
@@ -549,8 +567,8 @@ export const SettingsModal = ({
                       isDragging={draggingField === 'textPrimary'}
                       active={selectedField === 'textPrimary'} 
                       label="Text" 
-                      top={`${(80 - hexToHsl(editColors.textPrimary).l) / 50 * 100}%`} 
-                      left={`calc(${(hexToHsl(editColors.textPrimary).h / 360) * 100}% - 12px)`} 
+                      top={`${visualPositions.textPrimary.y}%`} 
+                      left={`calc(${visualPositions.textPrimary.x}% - 12px)`} 
                       onClick={() => setSelectedField('textPrimary')} 
                       onMouseDown={(e) => handleDragStart(e, 'textPrimary')}
                     />
@@ -565,9 +583,9 @@ export const SettingsModal = ({
                         '#ABC4FF', '#EDF2FB', '#7400B8', '#6930C3', '#48BFE3'
                       ].map(c => (
                         <div 
-                          key={c} 
-                          onClick={() => handleColorChange(selectedField, c)} 
-                          style={{ 
+                           key={c} 
+                           onClick={() => handleColorChange(selectedField, c, true)} 
+                           style={{ 
                             width: '24px', 
                             height: '24px', 
                             borderRadius: '50%', 
