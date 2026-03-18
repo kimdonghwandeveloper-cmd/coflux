@@ -331,6 +331,20 @@ export const SettingsModal = ({
 
   const handleColorChange = (key: keyof ThemeColors, value: string, syncVisual = false) => {
     const newColors = { ...editColors, [key]: value };
+    
+    // E23: bgPrimary 변경 시 파생 색상 자동 계산 (톤온톤 매칭)
+    if (key === 'bgPrimary') {
+      const hsl = hexToHsl(value);
+      const isLight = hsl.l > 50;
+      const dl = isLight ? -4 : 5;
+      const derivedL = Math.max(0, Math.min(100, hsl.l + dl));
+      
+      const derivedColor = hslToHex(hsl.h, hsl.s, derivedL);
+      newColors.bgSecondary = derivedColor;
+      newColors.sidebarBg = derivedColor;
+      newColors.bgSurface = value;
+    }
+    
     setEditColors(newColors);
     
     if (syncVisual) {
