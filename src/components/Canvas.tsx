@@ -551,10 +551,30 @@ export const Canvas = ({
   const [showTitleConfig, setShowTitleConfig] = useState(false);
   const [isTitleHovered, setIsTitleHovered] = useState(false);
 
-  // E27: BlockNote 호환 컬러맵 배열
+  // E27: BlockNote 호환 컬러맵 배열 및 HEX 명시적 정의
+  const HIGHLIGHT_COLORS: Record<string, { text: string; bg: string; darkText: string; darkBg: string }> = {
+    gray: { text: 'var(--auto-text-color)', bg: 'rgba(120, 119, 116, 0.15)', darkText: 'var(--auto-text-color)', darkBg: 'rgba(155, 154, 151, 0.15)' },
+    brown: { text: '#9f6b53', bg: 'rgba(159, 107, 83, 0.15)', darkText: '#ba856f', darkBg: 'rgba(186, 133, 111, 0.15)' },
+    red: { text: '#d44c47', bg: 'rgba(212, 76, 71, 0.15)', darkText: '#df5452', darkBg: 'rgba(223, 84, 82, 0.15)' },
+    orange: { text: '#d9730d', bg: 'rgba(217, 115, 13, 0.15)', darkText: '#c77e23', darkBg: 'rgba(199, 126, 35, 0.15)' },
+    yellow: { text: '#cb912f', bg: 'rgba(203, 145, 47, 0.15)', darkText: '#ca9849', darkBg: 'rgba(202, 152, 73, 0.15)' },
+    green: { text: '#448361', bg: 'rgba(68, 131, 97, 0.15)', darkText: '#529e72', darkBg: 'rgba(82, 158, 114, 0.15)' },
+    blue: { text: '#337ea9', bg: 'rgba(51, 126, 169, 0.15)', darkText: '#5e87c9', darkBg: 'rgba(94, 135, 201, 0.15)' },
+    purple: { text: '#9065b0', bg: 'rgba(144, 101, 176, 0.15)', darkText: '#9d68d3', darkBg: 'rgba(157, 104, 211, 0.15)' },
+    pink: { text: '#c14c8a', bg: 'rgba(193, 76, 138, 0.15)', darkText: '#d15796', darkBg: 'rgba(209, 87, 150, 0.15)' },
+  };
+
+  const getHighlightColor = (type: 'text'|'bg', color: string | null | undefined) => {
+    if (!color) return type === 'text' ? 'var(--auto-text-color)' : 'transparent';
+    const mapped = HIGHLIGHT_COLORS[color];
+    if (!mapped) return type === 'text' ? 'var(--auto-text-color)' : 'transparent';
+    const isDark = currentTheme === 'dark';
+    return isDark ? (type === 'text' ? mapped.darkText : mapped.darkBg) : (type === 'text' ? mapped.text : mapped.bg);
+  };
+
   const titleColors = [
     { label: 'Default', value: null },
-    { label: 'Gray', value: 'gray' },
+    { label: 'Gray (Black)', value: 'gray' },
     { label: 'Brown', value: 'brown' },
     { label: 'Red', value: 'red' },
     { label: 'Orange', value: 'orange' },
@@ -829,10 +849,10 @@ export const Canvas = ({
             className="page-title"
             style={{ 
               fontSize: '40px', fontWeight: 700, letterSpacing: '-0.02em', outline: 'none', 
-              color: activePage.titleColor ? `var(--bn-colors-highlights-${activePage.titleColor}-text, var(--auto-text-color))` : 'var(--auto-text-color, var(--text-primary))', 
-              background: activePage.titleBgColor ? `var(--bn-colors-highlights-${activePage.titleBgColor}-background, transparent)` : 'transparent', 
+              color: getHighlightColor('text', activePage.titleColor), 
+              background: getHighlightColor('bg', activePage.titleBgColor), 
               border: 'none', width: '100%', fontFamily: 'inherit',
-              padding: activePage.titleBgColor ? '0 12px' : '0',  // 배경색 있을 땐 패딩 약간 줌
+              padding: activePage.titleBgColor ? '0 12px' : '0',
               borderRadius: '8px', transition: 'all 0.2s ease', marginLeft: activePage.titleBgColor ? '-12px' : '0'
             }} 
           />
@@ -857,9 +877,9 @@ export const Canvas = ({
                       <div key={`t-${c.value}`} 
                            onClick={() => { onUpdatePage({...activePage, titleColor: c.value }); }}
                            title={c.label}
-                           style={{ width: '26px', height: '26px', borderRadius: '50%', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid var(--border-color)', background: c.value ? `var(--bn-colors-highlights-${c.value}-text)` : 'var(--auto-text-color)' }}
+                           style={{ width: '26px', height: '26px', borderRadius: '50%', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid var(--border-color)', background: getHighlightColor('text', c.value) }}
                       >
-                        {activePage.titleColor === c.value && <Check size={14} color={c.value ? "white" : "var(--bg-primary)"} />}
+                        {activePage.titleColor === c.value && <Check size={14} color="var(--bg-primary)" />}
                       </div>
                     ))}
                   </div>
@@ -871,7 +891,7 @@ export const Canvas = ({
                       <div key={`b-${c.value}`} 
                            onClick={() => { onUpdatePage({...activePage, titleBgColor: c.value }); }}
                            title={c.label}
-                           style={{ width: '26px', height: '26px', borderRadius: '4px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid var(--border-color)', background: c.value ? `var(--bn-colors-highlights-${c.value}-background)` : 'transparent' }}
+                           style={{ width: '26px', height: '26px', borderRadius: '4px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid var(--border-color)', background: getHighlightColor('bg', c.value) }}
                       >
                         {activePage.titleBgColor === c.value && <Check size={14} color="var(--text-primary)" />}
                       </div>
