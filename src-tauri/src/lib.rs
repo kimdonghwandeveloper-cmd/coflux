@@ -45,6 +45,8 @@ fn read_clipboard_sdp() -> Result<String, String> {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    dotenvy::dotenv().ok(); // .env 파일 로드
+
     tauri::Builder::default()
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_dialog::init())
@@ -121,6 +123,8 @@ pub fn run() {
             user::coflux_get_user_profile,
             user::coflux_sync_user_profile,
             user::coflux_logout_local,
+            user::coflux_create_checkout_session,
+            user::coflux_open_billing_portal,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
