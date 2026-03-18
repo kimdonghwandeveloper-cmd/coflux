@@ -364,3 +364,17 @@ html[data-theme='dark'] .react-grid-item {
   user-select: none !important;
   -webkit-user-select: none !important;
 }
+
+/* E25: Override BlockNote "Gray" color to be "Black" */
+.bn-editor [data-text-color="gray"] {
+  color: #000000 !important;
+}
+.bn-editor [data-bg-color="gray"] {
+  background-color: var(--border-color) !important;
+}
+html[data-theme='dark'] .bn-editor [data-text-color="gray"] {
+  color: #ffffff !important;
+}
+html[data-theme='dark'] .bn-editor [data-bg-color="gray"] {
+  background-color: #2e2e2e !important;
+}

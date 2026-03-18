@@ -4,6 +4,7 @@ import { webrtcClient } from '../lib/webrtc_client';
 import { listen, UnlistenFn } from '@tauri-apps/api/event';
 import { BlockNoteView } from "@blocknote/mantine";
 import { useCreateBlockNote, SuggestionMenuController, getDefaultReactSlashMenuItems } from "@blocknote/react";
+import { en } from "@blocknote/core";
 import { filterSuggestionItems } from "@blocknote/core/extensions";
 import "@blocknote/mantine/style.css";
 import { PageData } from '../App';
@@ -30,7 +31,7 @@ const CLS = {
 // Used by both the range-select and block-drag effects.
 function blockAtY(container: HTMLElement, clientY: number): HTMLElement | null {
   return Array.from(container.querySelectorAll<HTMLElement>('[data-id]'))
-    .findLast(el => {
+    .reverse().find(el => {
       const r = el.getBoundingClientRect();
       return clientY >= r.top && clientY <= r.bottom;
     }) ?? null;
@@ -189,6 +190,16 @@ const CollaborativeEditor = ({ provider, currentTheme, workspaceTheme, onAddSubP
   }, [pageId]);
 
   const editor = useCreateBlockNote({
+    dictionary: {
+      ...en,
+      color_picker: {
+        ...en.color_picker,
+        colors: {
+          ...en.color_picker.colors,
+          gray: "Black",
+        }
+      }
+    },
     collaboration: {
       provider,
       fragment: provider.doc.getXmlFragment("blocknote"),

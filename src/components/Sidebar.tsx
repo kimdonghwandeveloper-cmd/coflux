@@ -137,11 +137,12 @@ export const Sidebar = ({
   };
 
   const activeWs = workspaces.find(w => w.id === activeWorkspaceId);
-  const getChildren = (parentId: string) => pages.filter(p => p.parentId === parentId);
+  const sortByOrder = (a: PageData, b: PageData) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0);
+  const getChildren = (parentId: string) => pages.filter(p => p.parentId === parentId).sort(sortByOrder);
   const hasChildren = (parentId: string) => pages.some(p => p.parentId === parentId);
   
-  const favoriteRoots = pages.filter(p => p.isFavorite && !p.parentId);
-  const privateRoots = pages.filter(p => !p.isFavorite && !p.parentId);
+  const favoriteRoots = pages.filter(p => p.isFavorite && !p.parentId).sort(sortByOrder);
+  const privateRoots = pages.filter(p => !p.isFavorite && !p.parentId).sort(sortByOrder);
 
   const handleDragStart = (event: DragStartEvent) => {
     const page = privateRoots.find(p => p.id === event.active.id);
