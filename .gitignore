@@ -45,3 +45,8 @@ Thumbs.db
 COFLUX_AI_TODO.md
 COFLUX_RETROSPECTIVE_2026-03-17.md
 COFLUX_NEXT_STEPS.md
+
+#typescripts files
+.env
+.env.local
+.env.*.local
