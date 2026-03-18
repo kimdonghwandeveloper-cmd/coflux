@@ -1,25 +1,11 @@
 import { useEffect, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { Moon, Sun, X, Key, Check, Trash2, Eye, EyeOff, Palette, User, CreditCard, Layout, Zap, Github } from 'lucide-react';
+import { Moon, Sun, X, Key, Check, Trash2, Eye, EyeOff, Palette, User, CreditCard, Layout, Zap, Github, Sparkles } from 'lucide-react';
 import { WorkspaceData } from '../App';
 import { PRESET_THEMES, TOGGLE_THEME_IDS, WorkspaceTheme, ThemeColors } from '../lib/theme';
 import { UserProfile, supabase } from '../lib/supabase';
 
-const COLOR_FIELDS: { key: keyof ThemeColors; label: string }[] = [
-  { key: 'bgPrimary',    label: '배경 (기본)' },
-  { key: 'bgSecondary',  label: '배경 (보조)' },
-  { key: 'bgSurface',    label: '서피스' },
-  { key: 'sidebarBg',    label: '사이드바' },
-  { key: 'textPrimary',  label: '텍스트' },
-  { key: 'textSecondary',label: '텍스트 (보조)' },
-  { key: 'borderColor',  label: '보더' },
-  { key: 'accent',       label: '강조색' },
-  { key: 'accentHover',  label: '강조 호버' },
-  { key: 'success',      label: '성공' },
-  { key: 'warning',      label: '경고' },
-  { key: 'danger',       label: '위험' },
-];
-
+// AI Providers 정의
 const PROVIDERS = [
   { id: 'openai', label: 'OpenAI', placeholder: 'sk-...' },
   { id: 'anthropic', label: 'Anthropic', placeholder: 'sk-ant-...' },
@@ -133,6 +119,25 @@ const FeatureItem = ({ text, active }: { text: string; active: boolean }) => (
   </li>
 );
 
+const ThemeBubble = ({ color, size, active, label, top, left, onClick }: { color: string; size: number; active: boolean; label: string; top: string; left: string; onClick: () => void }) => (
+  <div 
+    onClick={onClick}
+    style={{ position: 'absolute', top, left, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px', zIndex: 2, cursor: 'pointer' }}
+  >
+    <div style={{ 
+      width: size + 'px', 
+      height: size + 'px', 
+      borderRadius: '50%', 
+      background: color, 
+      border: active ? '3px solid white' : '1px solid var(--border-color)',
+      boxShadow: active ? '0 0 20px ' + color : '0 4px 12px rgba(0,0,0,0.1)',
+      transition: 'all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275)',
+      transform: active ? 'scale(1.1)' : 'scale(1)'
+    }}></div>
+    <span style={{ fontSize: '10px', fontWeight: 600, color: active ? 'var(--text-primary)' : 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>{label}</span>
+  </div>
+);
+
 export const SettingsModal = ({
   user,
   theme,
@@ -155,17 +160,33 @@ export const SettingsModal = ({
   onClose: () => void;
 }) => {
   const [activeTab, setActiveTab] = useState<'appearance' | 'workspace' | 'ai_keys' | 'account'>('appearance');
-  const [showCustomEditor, setShowCustomEditor] = useState(activeThemeId === 'custom');
   const baseColors = savedCustomTheme?.colors ?? PRESET_THEMES.find(t => t.id === activeThemeId)?.colors ?? PRESET_THEMES[0].colors;
   const [editColors, setEditColors] = useState<ThemeColors>({ ...baseColors });
   const [isDarkCustom, setIsDarkCustom] = useState(savedCustomTheme?.isDark ?? false);
+  const [selectedField, setSelectedField] = useState<keyof ThemeColors>('accent');
 
   const handleColorChange = (key: keyof ThemeColors, value: string) => {
-    setEditColors(prev => ({ ...prev, [key]: value }));
+    const newColors = { ...editColors, [key]: value };
+    setEditColors(newColors);
+    
+    // 실시간 반영: 'Apply' 버튼 없이 즉시 적용
+    const custom: WorkspaceTheme = { 
+      id: 'custom', 
+      name: 'Custom', 
+      isDark: isDarkCustom, 
+      colors: newColors 
+    };
+    onThemeChange('custom', custom);
   };
 
-  const applyCustom = () => {
-    const custom: WorkspaceTheme = { id: 'custom', name: 'Custom', isDark: isDarkCustom, colors: editColors };
+  const handleModeChange = (isDark: boolean) => {
+    setIsDarkCustom(isDark);
+    const custom: WorkspaceTheme = { 
+      id: 'custom', 
+      name: 'Custom', 
+      isDark, 
+      colors: editColors 
+    };
     onThemeChange('custom', custom);
   };
 
@@ -289,7 +310,7 @@ export const SettingsModal = ({
                     return (
                       <div
                         key={t.id}
-                        onClick={() => { onThemeChange(t.id); setShowCustomEditor(false); }}
+                        onClick={() => onThemeChange(t.id)}
                         style={{ position: 'relative', borderRadius: '8px', overflow: 'hidden', cursor: 'pointer', border: isActive ? '2px solid var(--accent)' : '2px solid var(--border-color)', height: '60px' }}
                       >
                         <div style={{ height: '70%', background: t.colors.bgPrimary, display: 'flex', alignItems: 'flex-end', padding: '4px', gap: '2px' }}>
@@ -302,31 +323,81 @@ export const SettingsModal = ({
                       </div>
                     );
                   })}
+                  {/* 커스텀 카드 */}
+                  <div
+                    onClick={() => onThemeChange('custom')}
+                    style={{ position: 'relative', borderRadius: '8px', overflow: 'hidden', cursor: 'pointer', border: activeThemeId === 'custom' ? '2px solid var(--accent)' : '2px dashed var(--border-color)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '4px', background: 'var(--bg-secondary)', height: '60px' }}
+                  >
+                    <Palette size={14} color="var(--text-secondary)" />
+                    <span style={{ fontSize: '9px', fontWeight: 600, color: 'var(--text-secondary)' }}>커스텀</span>
+                  </div>
                 </div>
 
-                {/* 커스텀 카드 */}
-                <div
-                  onClick={() => setShowCustomEditor(v => !v)}
-                  style={{ position: 'relative', borderRadius: '8px', overflow: 'hidden', cursor: 'pointer', border: activeThemeId === 'custom' ? '2px solid var(--accent)' : '2px dashed var(--border-color)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '4px', background: 'var(--bg-secondary)', height: '60px' }}
-                >
-                  <Palette size={14} color="var(--text-secondary)" />
-                  <span style={{ fontSize: '9px', fontWeight: 600, color: 'var(--text-secondary)' }}>커스텀</span>
-                </div>
+                {/* 비주얼 테마 에디터 (이미지 기반) */}
+                <div style={{ 
+                  marginTop: '12px', 
+                  background: 'var(--bg-secondary)', 
+                  borderRadius: '16px', 
+                  padding: '24px', 
+                  border: '1px solid var(--border-color)',
+                  position: 'relative',
+                  overflow: 'hidden',
+                  minHeight: '340px',
+                  display: 'flex',
+                  flexDirection: 'column'
+                }}>
+                  {/* 도트 그리드 배경 */}
+                  <div style={{ 
+                    position: 'absolute', 
+                    inset: 0, 
+                    backgroundImage: 'radial-gradient(var(--border-color) 1px, transparent 1px)', 
+                    backgroundSize: '20px 20px', 
+                    opacity: 0.1,
+                    pointerEvents: 'none'
+                  }}></div>
 
-                {/* 커스텀 에디터 */}
-                {showCustomEditor && (
-                  <div style={{ gridColumn: 'span 4', background: 'var(--bg-secondary)', borderRadius: '8px', padding: '14px', border: '1px solid var(--border-color)', marginTop: '8px' }}>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '12px' }}>
-                      {COLOR_FIELDS.map(({ key, label }) => (
-                        <div key={key} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                          <input type="color" value={editColors[key]} onChange={e => handleColorChange(key, e.target.value)} style={{ width: '20px', height: '20px', border: 'none', cursor: 'pointer' }} />
-                          <span style={{ fontSize: '11px', flex: 1 }}>{label}</span>
-                        </div>
+                  {/* 상단 모드 선택기 */}
+                  <div style={{ display: 'flex', justifyContent: 'center', gap: '16px', marginBottom: '40px', position: 'relative', zIndex: 1 }}>
+                    <div onClick={() => handleModeChange(false)} style={{ cursor: 'pointer', padding: '10px', borderRadius: '12px', background: !isDarkCustom ? 'var(--bg-primary)' : 'transparent', border: !isDarkCustom ? '1px solid var(--border-color)' : 'none', color: !isDarkCustom ? 'var(--accent)' : 'var(--text-secondary)', transition: 'all 0.2s' }}>
+                      <Sparkles size={20} />
+                    </div>
+                    <div onClick={() => handleModeChange(false)} style={{ cursor: 'pointer', padding: '10px', borderRadius: '12px', background: !isDarkCustom ? 'var(--bg-primary)' : 'transparent', border: 'none', color: 'var(--text-secondary)' }}>
+                      <Sun size={20} />
+                    </div>
+                    <div onClick={() => handleModeChange(true)} style={{ cursor: 'pointer', padding: '10px', borderRadius: '12px', background: isDarkCustom ? 'var(--bg-primary)' : 'transparent', border: isDarkCustom ? '1px solid var(--border-color)' : 'none', color: isDarkCustom ? 'var(--accent)' : 'var(--text-secondary)', transition: 'all 0.2s' }}>
+                      <Moon size={20} />
+                    </div>
+                  </div>
+
+                  {/* 중앙 인터랙티브 버블 (주요 색상 선택) */}
+                  <div style={{ flex: 1, position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '40px' }}>
+                    <ThemeBubble color={editColors.bgPrimary} size={70} active={selectedField === 'bgPrimary'} label="Background" top="20%" left="15%" onClick={() => setSelectedField('bgPrimary')} />
+                    <ThemeBubble color={editColors.accent} size={40} active={selectedField === 'accent'} label="Accent" top="10%" left="55%" onClick={() => setSelectedField('accent')} />
+                    <ThemeBubble color={editColors.textPrimary} size={25} active={selectedField === 'textPrimary'} label="Text" top="45%" left="5%" onClick={() => setSelectedField('textPrimary')} />
+                  </div>
+
+                  {/* 하단 컬러 팔레트 & 슬라이더 영역 */}
+                  <div style={{ position: 'relative', zIndex: 1 }}>
+                    <div style={{ display: 'flex', justifyContent: 'center', gap: '10px', marginBottom: '20px' }}>
+                      {['#FFF9F0', '#F9E1E8', '#EBD4FB', '#DF8C96', '#E29774', '#D4CE82', '#6BE4A7', '#94A1C1'].map(c => (
+                        <div key={c} onClick={() => handleColorChange(selectedField, c)} style={{ width: '28px', height: '28px', borderRadius: '50%', background: c, cursor: 'pointer', border: '2px solid transparent', transform: editColors[selectedField] === c ? 'scale(1.1)' : 'none', boxShadow: editColors[selectedField] === c ? '0 0 0 2px var(--bg-primary), 0 0 0 4px ' + c : 'none' }}></div>
                       ))}
                     </div>
-                    <button onClick={applyCustom} style={{ width: '100%', padding: '6px', borderRadius: '4px', background: 'var(--accent)', color: 'white', border: 'none', fontSize: '12px', fontWeight: 600 }}>Apply Custom</button>
+
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+                      <div style={{ flex: 1, position: 'relative', height: '12px', background: 'var(--bg-primary)', borderRadius: '6px', border: '1px solid var(--border-color)' }}>
+                        <div style={{ position: 'absolute', top: '50%', left: '30%', width: '16px', height: '32px', background: 'white', borderRadius: '4px', transform: 'translateY(-50%)', cursor: 'grab', boxShadow: '0 2px 8px rgba(0,0,0,0.2)' }}></div>
+                        {/* Wavy Slider Effect (SVG) */}
+                        <svg width="100%" height="100%" viewBox="0 0 200 12" preserveAspectRatio="none" style={{ position: 'absolute', top: 0, left: 0, opacity: 0.2 }}>
+                          <path d="M0,6 Q25,0 50,6 T100,6 T150,6 T200,6" fill="none" stroke="currentColor" strokeWidth="2" />
+                        </svg>
+                      </div>
+                      <div style={{ width: '48px', height: '48px', borderRadius: '50%', border: '4px dashed var(--border-color)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                         <div style={{ width: '32px', height: '32px', borderRadius: '50%', background: 'var(--bg-primary)', border: '2px solid var(--border-color)' }}></div>
+                      </div>
+                    </div>
                   </div>
-                )}
+                </div>
 
                 <div style={{ marginTop: '20px', paddingTop: '16px', borderTop: '1px solid var(--border-color)' }}>
                   {TOGGLE_THEME_IDS.includes(activeThemeId) && (
