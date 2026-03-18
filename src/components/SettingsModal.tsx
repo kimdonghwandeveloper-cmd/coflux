@@ -617,12 +617,24 @@ export const SettingsModal = ({
                       <div 
                         id="saturation-slider"
                         onMouseDown={(e) => {
+                          if (hexToHsl(editColors[selectedField]).s === 0) return;
                           const rect = e.currentTarget.getBoundingClientRect();
                           const s = Math.max(0, Math.min(100, ((e.clientX - rect.left) / rect.width) * 100));
                           updateHsl(selectedField, { s });
                           setIsDraggingSlider(true);
                         }}
-                        style={{ flex: 1, position: 'relative', height: '12px', background: 'var(--bg-primary)', borderRadius: '6px', border: '1px solid var(--border-color)', cursor: 'pointer' }}
+                        style={{ 
+                          flex: 1, 
+                          position: 'relative', 
+                          height: '12px', 
+                          background: 'var(--bg-primary)', 
+                          borderRadius: '6px', 
+                          border: '1px solid var(--border-color)', 
+                          cursor: hexToHsl(editColors[selectedField]).s === 0 ? 'default' : 'pointer',
+                          opacity: hexToHsl(editColors[selectedField]).s === 0 ? 0.4 : 1,
+                          pointerEvents: hexToHsl(editColors[selectedField]).s === 0 ? 'none' : 'auto',
+                          transition: 'all 0.3s ease'
+                        }}
                       >
                         <div style={{ 
                           position: 'absolute', 
@@ -635,11 +647,17 @@ export const SettingsModal = ({
                           transform: 'translate(-50%, -50%)', 
                           boxShadow: '0 2px 10px rgba(0,0,0,0.3)',
                           transition: isDraggingSlider ? 'none' : 'left 0.2s',
-                          zIndex: 2
+                          zIndex: 2,
+                          display: hexToHsl(editColors[selectedField]).s === 0 ? 'none' : 'block'
                         }}></div>
-                        <svg width="100%" height="100%" viewBox="0 0 200 12" preserveAspectRatio="none" style={{ position: 'absolute', top: 0, left: 0, opacity: 0.2 }}>
+                        <svg width="100%" height="100%" viewBox="0 0 200 12" preserveAspectRatio="none" style={{ position: 'absolute', top: 0, left: 0, opacity: 0.15 }}>
                           <path d="M0,6 Q25,0 50,6 T100,6 T150,6 T200,6" fill="none" stroke="currentColor" strokeWidth="2" />
                         </svg>
+                        {hexToHsl(editColors[selectedField]).s === 0 && (
+                          <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '9px', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '1px' }}>
+                            Fixed (B/W)
+                          </div>
+                        )}
                       </div>
 
                       {/* 밝기 노브 (로터리 다이얼 - Gas Stove Style) */}
