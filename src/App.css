@@ -365,12 +365,23 @@ html[data-theme='dark'] .react-grid-item {
   -webkit-user-select: none !important;
 }
 
-/* E25: Override BlockNote "Gray" color to be "Black" */
+/* E25: Override BlockNote "Gray" color to be "Black" (Includes toolbar icons) */
+.bn-container,
+[data-theme='light'] {
+  --bn-colors-highlights-gray-text: #000000 !important;
+  --bn-colors-highlights-gray-background: #e9e9e7 !important;
+}
 .bn-editor [data-text-color="gray"] {
   color: #000000 !important;
 }
 .bn-editor [data-bg-color="gray"] {
-  background-color: var(--border-color) !important;
+  background-color: #e9e9e7 !important;
+}
+
+html[data-theme='dark'] .bn-container,
+html[data-theme='dark'] {
+  --bn-colors-highlights-gray-text: #ffffff !important;
+  --bn-colors-highlights-gray-background: #2e2e2e !important;
 }
 html[data-theme='dark'] .bn-editor [data-text-color="gray"] {
   color: #ffffff !important;
