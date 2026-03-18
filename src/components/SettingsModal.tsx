@@ -171,8 +171,32 @@ export const SettingsModal = ({
   };
 
   const handleUpgrade = async () => {
-    // Stripe Checkout 리다이렉트 (E9.2에서 구현 예정)
-    alert('Stripe 결제 페이지로 이동합니다. (준비 중)');
+    try {
+      if (!user) {
+        alert('로그인이 필요한 서비스입니다.');
+        setActiveTab('account');
+        return;
+      }
+      
+      const url = await invoke<string>('coflux_create_checkout_session', { email: user.email });
+      // tauri-plugin-opener가 설치되어 있으므로 open 호출 (또는 브라우저 API 사용)
+      window.open(url, '_blank');
+    } catch (e) {
+      alert('결제 세션 생성 실패: ' + e);
+    }
+  };
+
+  const handleManageBilling = async () => {
+    try {
+      if (!user?.stripe_customer_id) {
+        alert('빌링 정보가 없습니다. 고객 센터에 문의해주세요.');
+        return;
+      }
+      const url = await invoke<string>('coflux_open_billing_portal', { customerId: user.stripe_customer_id });
+      window.open(url, '_blank');
+    } catch (e) {
+      alert('빌링 포털 오픈 실패: ' + e);
+    }
   };
 
   const TABS = [
@@ -361,7 +385,14 @@ export const SettingsModal = ({
                           {user?.tier === 'pro' && <Zap size={18} fill="currentColor" />}
                         </h4>
                       </div>
-                      {user?.tier !== 'pro' && (
+                      {user?.tier === 'pro' ? (
+                        <button 
+                          onClick={handleManageBilling}
+                          style={{ padding: '8px 16px', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'var(--bg-primary)', color: 'var(--text-primary)', fontWeight: 600, fontSize: '13px', cursor: 'pointer' }}
+                        >
+                          Manage
+                        </button>
+                      ) : (
                         <button 
                           onClick={handleUpgrade}
                           style={{ padding: '8px 16px', borderRadius: '8px', border: 'none', background: 'var(--text-primary)', color: 'var(--bg-primary)', fontWeight: 600, fontSize: '13px', cursor: 'pointer' }}
