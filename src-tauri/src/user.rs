@@ -1,5 +1,7 @@
 use serde::{Deserialize, Serialize};
 use crate::db_core::DB_CONN;
+use reqwest;
+use serde_json;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct UserProfile {
@@ -33,6 +35,70 @@ pub fn coflux_get_user_profile() -> Result<Option<UserProfile>, String> {
         Ok(u) => Ok(Some(u)),
         Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
         Err(e) => Err(e.to_string()),
+    }
+}
+
+// ─── Stripe API 연동 ───────────────────────────────────────────────────────────
+
+#[tauri::command]
+pub async fn coflux_create_checkout_session(email: Option<String>) -> Result<String, String> {
+    let secret_key = std::env::var("STRIPE_SECRET_KEY").map_err(|_| "STRIPE_SECRET_KEY 환경 변수가 설정되지 않았습니다.")?;
+    let price_id = std::env::var("STRIPE_PRICE_ID").map_err(|_| "STRIPE_PRICE_ID 환경 변수가 설정되지 않았습니다.")?;
+
+    let client = reqwest::Client::new();
+    let mut params = vec![
+        ("mode", "subscription"),
+        ("success_url", "https://coflux.ai/success"), // 임시 URL
+        ("cancel_url", "https://coflux.ai/cancel"),
+        ("line_items[0][price]", &price_id),
+        ("line_items[0][quantity]", "1"),
+    ];
+
+    if let Some(e) = &email {
+        params.push(("customer_email", e));
+    }
+
+    let res = client
+        .post("https://api.stripe.com/v1/checkout/sessions")
+        .basic_auth(&secret_key, Some(""))
+        .form(&params)
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let json: serde_json::Value = res.json().await.map_err(|e| e.to_string())?;
+    
+    if let Some(url) = json["url"].as_str() {
+        Ok(url.to_string())
+    } else {
+        Err(format!("Stripe 에러: {}", json["error"]["message"].as_str().unwrap_or("알 수 없는 오류")))
+    }
+}
+
+#[tauri::command]
+pub async fn coflux_open_billing_portal(customer_id: String) -> Result<String, String> {
+    let secret_key = std::env::var("STRIPE_SECRET_KEY").map_err(|_| "STRIPE_SECRET_KEY 환경 변수가 설정되지 않았습니다.")?;
+
+    let client = reqwest::Client::new();
+    let params = [
+        ("customer", customer_id.as_str()),
+        ("return_url", "https://coflux.ai/settings"),
+    ];
+
+    let res = client
+        .post("https://api.stripe.com/v1/billing_portal/sessions")
+        .basic_auth(&secret_key, Some(""))
+        .form(&params)
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let json: serde_json::Value = res.json().await.map_err(|e| e.to_string())?;
+
+    if let Some(url) = json["url"].as_str() {
+        Ok(url.to_string())
+    } else {
+        Err(format!("Stripe 에러: {}", json["error"]["message"].as_str().unwrap_or("알 수 없는 오류")))
     }
 }
 
