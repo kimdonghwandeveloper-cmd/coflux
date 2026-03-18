@@ -10,6 +10,7 @@ import { AiChatWidget } from './components/AiChatWidget';
 import { KnowledgeMap } from './components/KnowledgeMap';
 import { invoke } from '@tauri-apps/api/core';
 import { applyTheme, resolveTheme, WorkspaceTheme, PRESET_THEMES } from './lib/theme';
+import { supabase, UserProfile } from './lib/supabase';
 
 export interface WorkspaceData {
   id: string;
@@ -43,6 +44,9 @@ function App() {
   const [scriptEditorOpen, setScriptEditorOpen] = useState(false);
   const [knowledgeMapOpen, setKnowledgeMapOpen] = useState(false);
 
+  const [user, setUser] = useState<UserProfile | null>(null);
+  const [isAuthLoading, setIsAuthLoading] = useState(true);
+
   const [workspaces, setWorkspaces] = useState<WorkspaceData[]>([]);
   const [activeWorkspaceId, setActiveWorkspaceId] = useState<string | null>(null);
   const [pages, setPages] = useState<PageData[]>([]);
@@ -53,6 +57,53 @@ function App() {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchFocused, setSearchFocused] = useState(false);
   const searchRef = useRef<HTMLDivElement>(null);
+
+  // Supabase 세션 초기화 및 로컬 동기화
+  useEffect(() => {
+    const initAuth = async () => {
+      try {
+        const localProfile = await invoke<UserProfile | null>('coflux_get_user_profile');
+        if (localProfile) setUser(localProfile);
+      } catch (e) {
+        console.error('로컬 프로필 로드 실패:', e);
+      }
+
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.user) {
+        const profile: UserProfile = {
+          id: session.user.id,
+          email: session.user.email,
+          tier: 'free',
+        };
+        setUser(profile);
+        await invoke('coflux_sync_user_profile', { user: profile });
+      }
+
+      const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
+        if (session?.user) {
+          const profile: UserProfile = {
+            id: session.user.id,
+            email: session.user.email,
+            tier: 'free',
+          };
+          setUser(profile);
+          await invoke('coflux_sync_user_profile', { user: profile });
+        } else {
+          setUser(null);
+          await invoke('coflux_logout_local');
+        }
+      });
+
+      setIsAuthLoading(false);
+    };
+
+    const authResPromise = initAuth();
+    return () => {
+      authResPromise.then(() => {
+        // cleanup logic if needed
+      });
+    };
+  }, []);
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -139,6 +190,17 @@ function App() {
     const wsPages = pages.filter(p => (p.workspaceId || 'default') === wsId && !p.isDeleted);
     setActivePageId(wsPages.length > 0 ? wsPages[0].id : null);
   };
+
+  if (isAuthLoading) {
+    return (
+      <div style={{ height: '100vh', width: '100vw', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg-primary)', color: 'var(--text-primary)' }}>
+        <div style={{ textAlign: 'center' }}>
+          <div style={{ fontSize: '24px', fontWeight: 700, marginBottom: '12px' }}>CoFlux</div>
+          <p style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>인증 정보 확인 중...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="app-container">
@@ -343,6 +405,7 @@ function App() {
       {/* Settings Modal */}
       {settingsOpen && (
         <SettingsModal
+          user={user}
           theme={theme}
           toggleTheme={handleToggleTheme}
           activeThemeId={activeThemeId}

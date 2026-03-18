@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { Moon, Sun, X, Key, Check, Trash2, Eye, EyeOff, Palette } from 'lucide-react';
+import { Moon, Sun, X, Key, Check, Trash2, Eye, EyeOff, Palette, User, CreditCard, Layout, Zap } from 'lucide-react';
 import { WorkspaceData } from '../App';
 import { PRESET_THEMES, TOGGLE_THEME_IDS, WorkspaceTheme, ThemeColors } from '../lib/theme';
+import { UserProfile, supabase } from '../lib/supabase';
 
 const COLOR_FIELDS: { key: keyof ThemeColors; label: string }[] = [
   { key: 'bgPrimary',    label: '배경 (기본)' },
@@ -120,6 +121,7 @@ function ApiKeyRow({ provider, label, placeholder }: { provider: ProviderId; lab
 }
 
 export const SettingsModal = ({
+  user,
   theme,
   toggleTheme,
   activeThemeId,
@@ -129,6 +131,7 @@ export const SettingsModal = ({
   onUpdateWorkspace,
   onClose,
 }: {
+  user: UserProfile | null;
   theme: string;
   toggleTheme: () => void;
   activeThemeId: string;
@@ -138,6 +141,7 @@ export const SettingsModal = ({
   onUpdateWorkspace: (ws: WorkspaceData) => void;
   onClose: () => void;
 }) => {
+  const [activeTab, setActiveTab] = useState<'appearance' | 'workspace' | 'ai_keys' | 'account'>('appearance');
   const [showCustomEditor, setShowCustomEditor] = useState(activeThemeId === 'custom');
   const baseColors = savedCustomTheme?.colors ?? PRESET_THEMES.find(t => t.id === activeThemeId)?.colors ?? PRESET_THEMES[0].colors;
   const [editColors, setEditColors] = useState<ThemeColors>({ ...baseColors });
@@ -152,175 +156,229 @@ export const SettingsModal = ({
     onThemeChange('custom', custom);
   };
 
+  const handleLogin = async () => {
+    // Supabase Magic Link 또는 OAuth 호출 (PM님이 설정 완료 후 작동)
+    const email = window.prompt('로그인할 이메일을 입력하세요:');
+    if (email) {
+      const { error } = await supabase.auth.signInWithOtp({ email });
+      if (error) alert('로그인 요청 실패: ' + error.message);
+      else alert('로그인 링크가 이메일로 전송되었습니다.');
+    }
+  };
+
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+  };
+
+  const handleUpgrade = async () => {
+    // Stripe Checkout 리다이렉트 (E9.2에서 구현 예정)
+    alert('Stripe 결제 페이지로 이동합니다. (준비 중)');
+  };
+
+  const TABS = [
+    { id: 'appearance', label: 'Appearance', icon: <Palette size={14} /> },
+    { id: 'workspace', label: 'Workspace', icon: <Layout size={14} /> },
+    { id: 'ai_keys', label: 'AI Keys', icon: <Key size={14} /> },
+    { id: 'account', label: 'Account & Plan', icon: <User size={14} /> },
+  ] as const;
+
   return (
     <div
       style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 500, display: 'flex', alignItems: 'center', justifyContent: 'center', animation: 'slideUpFade 0.15s ease-out forwards' }}
       onClick={onClose}
     >
       <div
-        style={{ background: 'var(--bg-primary)', borderRadius: '12px', width: '480px', maxHeight: '80vh', overflow: 'auto', boxShadow: '0 16px 48px rgba(0,0,0,0.2)', border: '1px solid var(--border-color)' }}
+        style={{ background: 'var(--bg-primary)', borderRadius: '12px', width: '640px', height: '520px', display: 'flex', flexDirection: 'column', boxShadow: '0 16px 48px rgba(0,0,0,0.2)', border: '1px solid var(--border-color)', overflow: 'hidden' }}
         onClick={e => e.stopPropagation()}
       >
         {/* Header */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '20px 24px 16px', borderBottom: '1px solid var(--border-color)' }}>
-          <h2 style={{ margin: 0, fontSize: '18px', fontWeight: 600 }}>Settings</h2>
-          <div onClick={onClose} style={{ cursor: 'pointer', padding: '4px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 24px', borderBottom: '1px solid var(--border-color)' }}>
+          <h2 style={{ margin: 0, fontSize: '16px', fontWeight: 600 }}>Settings</h2>
+          <div onClick={onClose} style={{ cursor: 'pointer', padding: '4px', borderRadius: '4px', hover: { background: 'var(--bg-secondary)' } } as any}>
             <X size={18} color="var(--text-secondary)" />
           </div>
         </div>
 
-        <div style={{ padding: '24px' }}>
-          {/* Appearance */}
-          <div style={{ marginBottom: '28px' }}>
-            <h3 style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '12px' }}>Appearance</h3>
-
-            {/* Theme grid */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '8px', marginBottom: '12px' }}>
-              {PRESET_THEMES.map(t => {
-                const isActive = t.id === activeThemeId;
-                return (
-                  <div
-                    key={t.id}
-                    onClick={() => { onThemeChange(t.id); setShowCustomEditor(false); }}
-                    title={t.name}
-                    style={{
-                      position: 'relative',
-                      borderRadius: '8px',
-                      overflow: 'hidden',
-                      cursor: 'pointer',
-                      border: isActive ? '2px solid var(--accent)' : '2px solid var(--border-color)',
-                      transition: 'border-color 0.15s',
-                    }}
-                  >
-                    <div style={{ height: '36px', background: t.colors.bgPrimary, display: 'flex', alignItems: 'flex-end', padding: '4px', gap: '2px' }}>
-                      <div style={{ width: '28%', height: '100%', background: t.colors.sidebarBg, borderRadius: '3px' }} />
-                      <div style={{ flex: 1, height: '60%', background: t.colors.bgSecondary, borderRadius: '3px' }} />
-                    </div>
-                    <div style={{ padding: '4px 5px', background: t.colors.bgSecondary }}>
-                      <span style={{ fontSize: '9px', fontWeight: 600, color: t.colors.textSecondary, display: 'block', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{t.name}</span>
-                    </div>
-                    {isActive && (
-                      <div style={{ position: 'absolute', top: '3px', left: '3px' }}>
-                        <Check size={10} color={t.colors.accent} />
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-
-              {/* + 커스텀 카드 */}
+        <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
+          {/* Sidebar Tabs */}
+          <div style={{ width: '180px', background: 'var(--bg-secondary)', borderRight: '1px solid var(--border-color)', padding: '12px 8px' }}>
+            {TABS.map(tab => (
               <div
-                onClick={() => setShowCustomEditor(v => !v)}
-                title="커스텀 테마"
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id as any)}
                 style={{
-                  position: 'relative',
-                  borderRadius: '8px',
-                  overflow: 'hidden',
-                  cursor: 'pointer',
-                  border: activeThemeId === 'custom' ? '2px solid var(--accent)' : '2px dashed var(--border-color)',
                   display: 'flex',
-                  flexDirection: 'column',
                   alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: '4px',
-                  minHeight: '58px',
-                  background: 'var(--bg-secondary)',
-                  transition: 'border-color 0.15s',
+                  gap: '10px',
+                  padding: '8px 12px',
+                  borderRadius: '6px',
+                  fontSize: '13px',
+                  fontWeight: activeTab === tab.id ? 600 : 500,
+                  color: activeTab === tab.id ? 'var(--text-primary)' : 'var(--text-secondary)',
+                  background: activeTab === tab.id ? 'var(--bg-surface)' : 'transparent',
+                  cursor: 'pointer',
+                  marginBottom: '2px',
+                  transition: 'all 0.15s ease'
                 }}
               >
-                <Palette size={14} color="var(--text-secondary)" />
-                <span style={{ fontSize: '9px', fontWeight: 600, color: 'var(--text-secondary)' }}>커스텀</span>
-                {activeThemeId === 'custom' && (
-                  <div style={{ position: 'absolute', top: '3px', left: '3px' }}>
-                    <Check size={10} color="var(--accent)" />
-                  </div>
-                )}
+                {tab.icon}
+                {tab.label}
               </div>
-            </div>
-
-            {/* 커스텀 컬러 에디터 */}
-            {showCustomEditor && (
-              <div style={{ background: 'var(--bg-secondary)', borderRadius: '8px', padding: '14px', marginBottom: '12px', border: '1px solid var(--border-color)' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-                  <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)' }}>색상 편집</span>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', color: 'var(--text-secondary)', cursor: 'pointer' }}>
-                    <input type="checkbox" checked={isDarkCustom} onChange={e => setIsDarkCustom(e.target.checked)} style={{ width: '14px', height: '14px' }} />
-                    다크 모드
-                  </label>
-                </div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '12px' }}>
-                  {COLOR_FIELDS.map(({ key, label }) => (
-                    <div key={key} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <input
-                        type="color"
-                        value={editColors[key]}
-                        onChange={e => handleColorChange(key, e.target.value)}
-                        style={{ width: '28px', height: '28px', border: 'none', borderRadius: '4px', cursor: 'pointer', padding: 0, background: 'none' }}
-                      />
-                      <span style={{ fontSize: '12px', color: 'var(--text-primary)', flex: 1 }}>{label}</span>
-                      <span style={{ fontSize: '10px', color: 'var(--text-secondary)', fontFamily: 'monospace' }}>{editColors[key]}</span>
-                    </div>
-                  ))}
-                </div>
-                <button
-                  onClick={applyCustom}
-                  style={{ width: '100%', padding: '7px', borderRadius: '6px', border: 'none', background: 'var(--accent)', color: 'var(--bg-primary)', fontSize: '13px', fontWeight: 600, cursor: 'pointer' }}
-                >
-                  적용
-                </button>
-              </div>
-            )}
-
-            {/* 커스텀 테마일 때: 되돌리기 버튼 / 기본 테마일 때: 토글 버튼 */}
-            {TOGGLE_THEME_IDS.includes(activeThemeId) ? (
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 0' }}>
-                <span style={{ fontSize: '14px' }}>Quick toggle</span>
-                <div onClick={toggleTheme} style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', padding: '6px 12px', borderRadius: '6px', background: 'var(--bg-secondary)', border: '1px solid var(--border-color)' }}>
-                  {theme === 'light' ? <Moon size={14} /> : <Sun size={14} />}
-                  <span style={{ fontSize: '13px' }}>{theme === 'light' ? 'Dark mode' : 'Light mode'}</span>
-                </div>
-              </div>
-            ) : (
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 0' }}>
-                <span style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>커스텀 테마 적용 중</span>
-                <div onClick={() => { onThemeChange('notion-light'); setShowCustomEditor(false); }} style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', padding: '5px 12px', borderRadius: '6px', background: 'var(--bg-secondary)', border: '1px solid var(--border-color)' }}>
-                  <span style={{ fontSize: '12px' }}>기본으로 되돌리기</span>
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* Workspace */}
-          {activeWorkspace && (
-            <div style={{ marginBottom: '28px' }}>
-              <h3 style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '12px' }}>Workspace</h3>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 0' }}>
-                <span style={{ fontSize: '14px', minWidth: '80px' }}>Name</span>
-                <input
-                  value={activeWorkspace.name}
-                  onChange={e => onUpdateWorkspace({ ...activeWorkspace, name: e.target.value, icon: e.target.value.charAt(0).toUpperCase() })}
-                  style={{ flex: 1, padding: '6px 10px', borderRadius: '6px', border: '1px solid var(--border-color)', background: 'var(--bg-secondary)', color: 'var(--text-primary)', fontSize: '13px', outline: 'none' }}
-                />
-              </div>
-            </div>
-          )}
-
-          {/* AI API Keys (BYOK) */}
-          <div style={{ marginBottom: '28px' }}>
-            <h3 style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '4px' }}>AI API Keys</h3>
-            <p style={{ fontSize: '12px', color: 'var(--text-secondary)', margin: '0 0 12px' }}>외부 AI 태스크에 사용됩니다. 키는 암호화되어 로컬에 저장됩니다.</p>
-            {PROVIDERS.map(p => (
-              <ApiKeyRow key={p.id} provider={p.id} label={p.label} placeholder={p.placeholder} />
             ))}
           </div>
 
-          {/* About */}
-          <div>
-            <h3 style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '12px' }}>About</h3>
-            <div style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>
-              <p style={{ margin: '4px 0' }}>Coflux v0.1.0</p>
-              <p style={{ margin: '4px 0' }}>P2P AI Bridge System</p>
-            </div>
+          {/* Tab Content */}
+          <div style={{ flex: 1, padding: '24px', overflowY: 'auto' }}>
+            {activeTab === 'appearance' && (
+              <div>
+                <h3 style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '16px' }}>Appearance</h3>
+                {/* Theme grid */}
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '10px', marginBottom: '16px' }}>
+                  {PRESET_THEMES.map(t => {
+                    const isActive = t.id === activeThemeId;
+                    return (
+                      <div
+                        key={t.id}
+                        onClick={() => { onThemeChange(t.id); setShowCustomEditor(false); }}
+                        style={{ position: 'relative', borderRadius: '8px', overflow: 'hidden', cursor: 'pointer', border: isActive ? '2px solid var(--accent)' : '2px solid var(--border-color)', height: '60px' }}
+                      >
+                        <div style={{ height: '70%', background: t.colors.bgPrimary, display: 'flex', alignItems: 'flex-end', padding: '4px', gap: '2px' }}>
+                          <div style={{ width: '25%', height: '100%', background: t.colors.sidebarBg, borderRadius: '2px' }} />
+                          <div style={{ flex: 1, height: '60%', background: t.colors.bgSecondary, borderRadius: '2px' }} />
+                        </div>
+                        <div style={{ height: '30%', padding: '0 6px', background: t.colors.bgSecondary, display: 'flex', alignItems: 'center' }}>
+                          <span style={{ fontSize: '10px', fontWeight: 600, color: t.colors.textSecondary }}>{t.name}</span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* 커스텀 카드 */}
+                <div
+                  onClick={() => setShowCustomEditor(v => !v)}
+                  style={{ position: 'relative', borderRadius: '8px', overflow: 'hidden', cursor: 'pointer', border: activeThemeId === 'custom' ? '2px solid var(--accent)' : '2px dashed var(--border-color)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '4px', background: 'var(--bg-secondary)', height: '60px' }}
+                >
+                  <Palette size={14} color="var(--text-secondary)" />
+                  <span style={{ fontSize: '9px', fontWeight: 600, color: 'var(--text-secondary)' }}>커스텀</span>
+                </div>
+
+                {/* 커스텀 에디터 */}
+                {showCustomEditor && (
+                  <div style={{ gridColumn: 'span 4', background: 'var(--bg-secondary)', borderRadius: '8px', padding: '14px', border: '1px solid var(--border-color)', marginTop: '8px' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '12px' }}>
+                      {COLOR_FIELDS.map(({ key, label }) => (
+                        <div key={key} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <input type="color" value={editColors[key]} onChange={e => handleColorChange(key, e.target.value)} style={{ width: '20px', height: '20px', border: 'none', cursor: 'pointer' }} />
+                          <span style={{ fontSize: '11px', flex: 1 }}>{label}</span>
+                        </div>
+                      ))}
+                    </div>
+                    <button onClick={applyCustom} style={{ width: '100%', padding: '6px', borderRadius: '4px', background: 'var(--accent)', color: 'white', border: 'none', fontSize: '12px', fontWeight: 600 }}>Apply Custom</button>
+                  </div>
+                )}
+
+                <div style={{ marginTop: '20px', paddingTop: '16px', borderTop: '1px solid var(--border-color)' }}>
+                  {TOGGLE_THEME_IDS.includes(activeThemeId) && (
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <span style={{ fontSize: '13px' }}>Quick toggle mode</span>
+                      <div onClick={toggleTheme} style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', padding: '6px 12px', borderRadius: '6px', background: 'var(--bg-secondary)', border: '1px solid var(--border-color)' }}>
+                        {theme === 'light' ? <Moon size={14} /> : <Sun size={14} />}
+                        <span style={{ fontSize: '12px', fontWeight: 500 }}>{theme === 'light' ? 'Dark' : 'Light'}</span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {activeTab === 'workspace' && activeWorkspace && (
+              <div>
+                <h3 style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '16px' }}>Workspace Settings</h3>
+                <div style={{ padding: '16px', background: 'var(--bg-secondary)', borderRadius: '8px', spaceY: '12px' } as any}>
+                  <div style={{ marginBottom: '12px' }}>
+                    <label style={{ display: 'block', fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '6px' }}>Workspace Name</label>
+                    <input
+                      value={activeWorkspace.name}
+                      onChange={e => onUpdateWorkspace({ ...activeWorkspace, name: e.target.value, icon: e.target.value.charAt(0).toUpperCase() })}
+                      style={{ width: '100%', padding: '8px 12px', borderRadius: '6px', border: '1px solid var(--border-color)', background: 'var(--bg-primary)', color: 'var(--text-primary)', fontSize: '13px', outline: 'none' }}
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {activeTab === 'ai_keys' && (
+              <div>
+                <h3 style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '4px' }}>AI API Keys</h3>
+                <p style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '16px' }}>Bring Your Own Key: 모든 데이터는 암호화되어 로컬에 저장됩니다.</p>
+                <div style={{ background: 'var(--bg-secondary)', borderRadius: '8px', padding: '8px 16px' }}>
+                  {PROVIDERS.map(p => (
+                    <ApiKeyRow key={p.id} provider={p.id} label={p.label} placeholder={p.placeholder} />
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {activeTab === 'account' && (
+              <div style={{ animation: 'fadeIn 0.2s ease-out' }}>
+                <h3 style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '16px' }}>Account & Subscription</h3>
+                
+                <div style={{ padding: '20px', background: 'var(--bg-secondary)', borderRadius: '12px', border: '1px solid var(--border-color)', marginBottom: '20px' }}>
+                  {user ? (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+                      <div style={{ width: '48px', height: '48px', borderRadius: '50%', background: 'var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontSize: '20px', fontWeight: 600 }}>
+                        {user.email?.[0].toUpperCase() || 'U'}
+                      </div>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontSize: '15px', fontWeight: 600, color: 'var(--text-primary)' }}>{user.email}</div>
+                        <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>ID: {user.id.slice(0, 8)}...</div>
+                      </div>
+                      <button onClick={handleLogout} style={{ padding: '6px 12px', borderRadius: '6px', border: '1px solid var(--border-color)', background: 'var(--bg-primary)', fontSize: '12px', cursor: 'pointer' }}>Logout</button>
+                    </div>
+                  ) : (
+                    <div style={{ textAlign: 'center', padding: '10px 0' }}>
+                      <p style={{ fontSize: '14px', color: 'var(--text-secondary)', marginBottom: '16px' }}>로그인하여 기기 간 동기화 및 Pro 기능을 사용하세요.</p>
+                      <button 
+                        onClick={handleLogin}
+                        style={{ padding: '10px 24px', borderRadius: '8px', border: 'none', background: 'var(--accent)', color: 'white', fontWeight: 600, fontSize: '14px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', margin: '0 auto' }}
+                      >
+                        <Layout size={16} /> Sign in to CoFlux
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                <div style={{ padding: '20px', background: 'linear-gradient(135deg, var(--bg-surface) 0%, var(--bg-secondary) 100%)', borderRadius: '12px', border: '1px solid var(--border-color)', position: 'relative', overflow: 'hidden' }}>
+                  <div style={{ position: 'relative', zIndex: 1 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '12px' }}>
+                      <div>
+                        <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--accent)', textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                          <CreditCard size={12} /> Current Plan
+                        </span>
+                        <h4 style={{ margin: '4px 0', fontSize: '20px', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          {user?.tier === 'pro' ? 'CoFlux Pro' : 'Free Plan'}
+                          {user?.tier === 'pro' && <Zap size={18} fill="currentColor" />}
+                        </h4>
+                      </div>
+                      {user?.tier !== 'pro' && (
+                        <button 
+                          onClick={handleUpgrade}
+                          style={{ padding: '8px 16px', borderRadius: '8px', border: 'none', background: 'var(--text-primary)', color: 'var(--bg-primary)', fontWeight: 600, fontSize: '13px', cursor: 'pointer' }}
+                        >
+                          Upgrade
+                        </button>
+                      )}
+                    </div>
+                    <p style={{ fontSize: '13px', color: 'var(--text-secondary)', lineHeight: '1.5', margin: 0 }}>
+                      {user?.tier === 'pro' 
+                        ? '모든 프리미엄 기능을 사용 중입니다. 무제한 AI 질문과 클라우드 동기화가 활성화되어 있습니다.' 
+                        : '기본 기능을 무료로 이용 중입니다. Pro로 업그레이드하여 더 강력한 AI와 클라우드 동기화를 경험하세요.'}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>
