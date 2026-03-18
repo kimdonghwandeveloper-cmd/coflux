@@ -337,10 +337,15 @@ export const SettingsModal = ({
       const hsl = hexToHsl(value);
       // 명도 기반 Y축 클램핑 (30-80% 범위를 넘어가는 흰색/검정 대응)
       const y = Math.max(0, Math.min(100, (80 - hsl.l) / 50 * 100));
-      setVisualPositions(prev => ({
-        ...prev,
-        [key]: { x: (hsl.h / 360) * 100, y }
-      }));
+      
+      setVisualPositions(prev => {
+        // 채도가 0(무채색)인 경우 기존의 x(Hue) 좌표를 유지하여 색상 기억
+        const newX = hsl.s === 0 ? prev[key].x : (hsl.h / 360) * 100;
+        return {
+          ...prev,
+          [key]: { x: newX, y }
+        };
+      });
     }
 
     if (savedCustomTheme) {
