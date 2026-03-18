@@ -5,6 +5,7 @@ mod db_core;
 mod embeddings;
 mod os_hooks;
 mod web_search;
+mod user;
 mod rag;
 mod script_storage;
 mod security;
@@ -116,6 +117,10 @@ pub fn run() {
             embeddings::coflux_get_outlinks,
             embeddings::coflux_get_all_links,
             rag::coflux_rag_query,
+            web_search::coflux_web_search,
+            user::coflux_get_user_profile,
+            user::coflux_sync_user_profile,
+            user::coflux_logout_local,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
