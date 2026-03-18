@@ -5,7 +5,61 @@ import { WorkspaceData } from '../App';
 import { PRESET_THEMES, TOGGLE_THEME_IDS, WorkspaceTheme, ThemeColors } from '../lib/theme';
 import { UserProfile, supabase } from '../lib/supabase';
 
-// AI Providers 정의
+// ─── 색상 처리 유틸리티 ───────────────────────────────────────────────────────
+
+/** Hex (#RRGGBB) -> HSL ({h, s, l}) 변환 */
+function hexToHsl(hex: string) {
+  let r = parseInt(hex.slice(1, 3), 16) / 255;
+  let g = parseInt(hex.slice(3, 5), 16) / 255;
+  let b = parseInt(hex.slice(5, 7), 16) / 255;
+
+  let max = Math.max(r, g, b), min = Math.min(r, g, b);
+  let h = 0, s, l = (max + min) / 2;
+
+  if (max === min) {
+    h = s = 0; // achromatic
+  } else {
+    let d = max - min;
+    s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+    switch (max) {
+      case r: h = (g - b) / d + (g < b ? 6 : 0); break;
+      case g: h = (b - r) / d + 2; break;
+      case b: h = (r - g) / d + 4; break;
+    }
+    h /= 6;
+  }
+  return { h: h * 360, s: s * 100, l: l * 100 };
+}
+
+/** HSL ({h, s, l}) -> Hex (#RRGGBB) 변환 */
+function hslToHex(h: number, s: number, l: number) {
+  h /= 360; s /= 100; l /= 100;
+  let r, g, b;
+  if (s === 0) {
+    r = g = b = l; // achromatic
+  } else {
+    const hue2rgb = (p: number, q: number, t: number) => {
+      if (t < 0) t += 1;
+      if (t > 1) t -= 1;
+      if (t < 1/6) return p + (q - p) * 6 * t;
+      if (t < 1/2) return q;
+      if (t < 2/3) return p + (q - p) * (2/3 - t) * 6;
+      return p;
+    };
+    let q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+    let p = 2 * l - q;
+    r = hue2rgb(p, q, h + 1/3);
+    g = hue2rgb(p, q, h);
+    b = hue2rgb(p, q, h - 1/3);
+  }
+  const toHex = (x: number) => {
+    const hex = Math.round(x * 255).toString(16);
+    return hex.length === 1 ? '0' + hex : hex;
+  };
+  return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
+}
+
+// ─── AI Providers 정의 ────────────────────────────────────────────────────────
 const PROVIDERS = [
   { id: 'openai', label: 'OpenAI', placeholder: 'sk-...' },
   { id: 'anthropic', label: 'Anthropic', placeholder: 'sk-ant-...' },
@@ -119,10 +173,11 @@ const FeatureItem = ({ text, active }: { text: string; active: boolean }) => (
   </li>
 );
 
-const ThemeBubble = ({ color, size, active, label, top, left, onClick }: { color: string; size: number; active: boolean; label: string; top: string; left: string; onClick: () => void }) => (
+const ThemeBubble = ({ color, size, active, label, top, left, onClick, onMouseDown }: { color: string; size: number; active: boolean; label: string; top: string; left: string; onClick: () => void; onMouseDown: (e: React.MouseEvent) => void }) => (
   <div 
     onClick={onClick}
-    style={{ position: 'absolute', top, left, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px', zIndex: 2, cursor: 'pointer' }}
+    onMouseDown={onMouseDown}
+    style={{ position: 'absolute', top, left, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px', zIndex: 2, cursor: 'grab', transition: 'left 0.1s linear' }}
   >
     <div style={{ 
       width: size + 'px', 
@@ -164,6 +219,36 @@ export const SettingsModal = ({
   const [editColors, setEditColors] = useState<ThemeColors>({ ...baseColors });
   const [isDarkCustom, setIsDarkCustom] = useState(savedCustomTheme?.isDark ?? false);
   const [selectedField, setSelectedField] = useState<keyof ThemeColors>('accent');
+  const [draggingField, setDraggingField] = useState<keyof ThemeColors | null>(null);
+
+  // HSL 조절 헬퍼
+  const updateHsl = (key: keyof ThemeColors, { h, s, l }: { h?: number; s?: number; l?: number }) => {
+    const currentHsl = hexToHsl(editColors[key]);
+    const nextHex = hslToHex(
+      h ?? currentHsl.h,
+      s ?? currentHsl.s,
+      l ?? currentHsl.l
+    );
+    handleColorChange(key, nextHex);
+  };
+
+  const handleDragStart = (e: React.MouseEvent, key: keyof ThemeColors) => {
+    e.stopPropagation();
+    setSelectedField(key);
+    setDraggingField(key);
+  };
+
+  const handleEditorMouseMove = (e: React.MouseEvent) => {
+    if (!draggingField) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    const x = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+    // X 좌표를 Hue (0-360)에 매핑
+    updateHsl(draggingField, { h: x * 360 });
+  };
+
+  const handleDragEnd = () => {
+    setDraggingField(null);
+  };
 
   const handleColorChange = (key: keyof ThemeColors, value: string) => {
     const newColors = { ...editColors, [key]: value };
@@ -334,18 +419,24 @@ export const SettingsModal = ({
                 </div>
 
                 {/* 비주얼 테마 에디터 (이미지 기반) */}
-                <div style={{ 
-                  marginTop: '12px', 
-                  background: 'var(--bg-secondary)', 
-                  borderRadius: '16px', 
-                  padding: '24px', 
-                  border: '1px solid var(--border-color)',
-                  position: 'relative',
-                  overflow: 'hidden',
-                  minHeight: '340px',
-                  display: 'flex',
-                  flexDirection: 'column'
-                }}>
+                <div 
+                  onMouseMove={handleEditorMouseMove}
+                  onMouseUp={handleDragEnd}
+                  onMouseLeave={handleDragEnd}
+                  style={{ 
+                    marginTop: '12px', 
+                    background: 'var(--bg-secondary)', 
+                    borderRadius: '16px', 
+                    padding: '24px', 
+                    border: '1px solid var(--border-color)',
+                    position: 'relative',
+                    overflow: 'hidden',
+                    minHeight: '340px',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    userSelect: 'none'
+                  }}
+                >
                   {/* 도트 그리드 배경 */}
                   <div style={{ 
                     position: 'absolute', 
@@ -371,29 +462,102 @@ export const SettingsModal = ({
 
                   {/* 중앙 인터랙티브 버블 (주요 색상 선택) */}
                   <div style={{ flex: 1, position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '40px' }}>
-                    <ThemeBubble color={editColors.bgPrimary} size={70} active={selectedField === 'bgPrimary'} label="Background" top="20%" left="15%" onClick={() => setSelectedField('bgPrimary')} />
-                    <ThemeBubble color={editColors.accent} size={40} active={selectedField === 'accent'} label="Accent" top="10%" left="55%" onClick={() => setSelectedField('accent')} />
-                    <ThemeBubble color={editColors.textPrimary} size={25} active={selectedField === 'textPrimary'} label="Text" top="45%" left="5%" onClick={() => setSelectedField('textPrimary')} />
+                    <ThemeBubble 
+                      color={editColors.bgPrimary} 
+                      size={70} 
+                      active={selectedField === 'bgPrimary'} 
+                      label="Background" 
+                      top="20%" 
+                      left={`calc(${(hexToHsl(editColors.bgPrimary).h / 360) * 100}% - 35px)`} 
+                      onClick={() => setSelectedField('bgPrimary')} 
+                      onMouseDown={(e) => handleDragStart(e, 'bgPrimary')}
+                    />
+                    <ThemeBubble 
+                      color={editColors.accent} 
+                      size={40} 
+                      active={selectedField === 'accent'} 
+                      label="Accent" 
+                      top="10%" 
+                      left={`calc(${(hexToHsl(editColors.accent).h / 360) * 100}% - 20px)`} 
+                      onClick={() => setSelectedField('accent')} 
+                      onMouseDown={(e) => handleDragStart(e, 'accent')}
+                    />
+                    <ThemeBubble 
+                      color={editColors.textPrimary} 
+                      size={25} 
+                      active={selectedField === 'textPrimary'} 
+                      label="Text" 
+                      top="45%" 
+                      left={`calc(${(hexToHsl(editColors.textPrimary).h / 360) * 100}% - 12.5px)`} 
+                      onClick={() => setSelectedField('textPrimary')} 
+                      onMouseDown={(e) => handleDragStart(e, 'textPrimary')}
+                    />
                   </div>
 
                   {/* 하단 컬러 팔레트 & 슬라이더 영역 */}
                   <div style={{ position: 'relative', zIndex: 1 }}>
-                    <div style={{ display: 'flex', justifyContent: 'center', gap: '10px', marginBottom: '20px' }}>
-                      {['#FFF9F0', '#F9E1E8', '#EBD4FB', '#DF8C96', '#E29774', '#D4CE82', '#6BE4A7', '#94A1C1'].map(c => (
-                        <div key={c} onClick={() => handleColorChange(selectedField, c)} style={{ width: '28px', height: '28px', borderRadius: '50%', background: c, cursor: 'pointer', border: '2px solid transparent', transform: editColors[selectedField] === c ? 'scale(1.1)' : 'none', boxShadow: editColors[selectedField] === c ? '0 0 0 2px var(--bg-primary), 0 0 0 4px ' + c : 'none' }}></div>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: '8px', marginBottom: '20px' }}>
+                      {[
+                        '#FFF9F0', '#F9E1E8', '#EBD4FB', '#DF8C96', '#E29774', '#D4CE82', '#6BE4A7', '#94A1C1',
+                        '#FF9AA2', '#FFB7B2', '#FFDAC1', '#E2F0CB', '#B5EAD7', '#C7CEEA', '#97C1A9', '#55CBCD',
+                        '#ABC4FF', '#EDF2FB', '#7400B8', '#6930C3', '#48BFE3'
+                      ].map(c => (
+                        <div 
+                          key={c} 
+                          onClick={() => handleColorChange(selectedField, c)} 
+                          style={{ 
+                            width: '24px', 
+                            height: '24px', 
+                            borderRadius: '50%', 
+                            background: c, 
+                            cursor: 'pointer', 
+                            border: '2px solid transparent', 
+                            transform: editColors[selectedField] === c ? 'scale(1.2)' : 'none', 
+                            boxShadow: editColors[selectedField] === c ? '0 0 0 2px var(--bg-primary), 0 0 0 4px ' + c : 'none',
+                            transition: 'all 0.2s'
+                          }}
+                        ></div>
                       ))}
                     </div>
 
                     <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-                      <div style={{ flex: 1, position: 'relative', height: '12px', background: 'var(--bg-primary)', borderRadius: '6px', border: '1px solid var(--border-color)' }}>
-                        <div style={{ position: 'absolute', top: '50%', left: '30%', width: '16px', height: '32px', background: 'white', borderRadius: '4px', transform: 'translateY(-50%)', cursor: 'grab', boxShadow: '0 2px 8px rgba(0,0,0,0.2)' }}></div>
-                        {/* Wavy Slider Effect (SVG) */}
+                      {/* 채도 슬라이더 (웨이브) */}
+                      <div 
+                        onMouseDown={(e) => {
+                          const rect = e.currentTarget.getBoundingClientRect();
+                          const s = ((e.clientX - rect.left) / rect.width) * 100;
+                          updateHsl(selectedField, { s });
+                        }}
+                        style={{ flex: 1, position: 'relative', height: '12px', background: 'var(--bg-primary)', borderRadius: '6px', border: '1px solid var(--border-color)', cursor: 'pointer' }}
+                      >
+                        <div style={{ 
+                          position: 'absolute', 
+                          top: '50%', 
+                          left: `${hexToHsl(editColors[selectedField]).s}%`, 
+                          width: '16px', 
+                          height: '32px', 
+                          background: 'white', 
+                          borderRadius: '4px', 
+                          transform: 'translate(-50%, -50%)', 
+                          boxShadow: '0 2px 8px rgba(0,0,0,0.2)',
+                          transition: 'left 0.1s'
+                        }}></div>
                         <svg width="100%" height="100%" viewBox="0 0 200 12" preserveAspectRatio="none" style={{ position: 'absolute', top: 0, left: 0, opacity: 0.2 }}>
                           <path d="M0,6 Q25,0 50,6 T100,6 T150,6 T200,6" fill="none" stroke="currentColor" strokeWidth="2" />
                         </svg>
                       </div>
-                      <div style={{ width: '48px', height: '48px', borderRadius: '50%', border: '4px dashed var(--border-color)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                         <div style={{ width: '32px', height: '32px', borderRadius: '50%', background: 'var(--bg-primary)', border: '2px solid var(--border-color)' }}></div>
+
+                      {/* 밝기 노브 (원형) */}
+                      <div 
+                        onClick={() => {
+                          const l = hexToHsl(editColors[selectedField]).l;
+                          // 클릭 시마다 미세하게 밝기 순환 (가이드에 따른 눈 편안한 범위 30~80%)
+                          const nextL = l > 70 ? 30 : l + 10;
+                          updateHsl(selectedField, { l: nextL });
+                        }}
+                        style={{ width: '48px', height: '48px', borderRadius: '50%', border: '4px dashed var(--border-color)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', transition: 'transform 0.2s' }}
+                      >
+                         <div style={{ width: '32px', height: '32px', borderRadius: '50%', background: editColors[selectedField], border: '2px solid white', boxShadow: '0 0 10px rgba(0,0,0,0.1)' }}></div>
                       </div>
                     </div>
                   </div>
