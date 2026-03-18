@@ -173,11 +173,22 @@ const FeatureItem = ({ text, active }: { text: string; active: boolean }) => (
   </li>
 );
 
-const ThemeBubble = ({ color, size, active, label, top, left, onClick, onMouseDown }: { color: string; size: number; active: boolean; label: string; top: string; left: string; onClick: () => void; onMouseDown: (e: React.MouseEvent) => void }) => (
+const ThemeBubble = ({ color, size, active, label, top, left, onClick, onMouseDown, isDragging }: { color: string; size: number; active: boolean; label: string; top: string; left: string; onClick: () => void; onMouseDown: (e: React.MouseEvent) => void, isDragging?: boolean }) => (
   <div 
     onClick={onClick}
     onMouseDown={onMouseDown}
-    style={{ position: 'absolute', top, left, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px', zIndex: 2, cursor: 'grab', transition: 'all 0.1s linear' }}
+    style={{ 
+      position: 'absolute', 
+      top, 
+      left, 
+      display: 'flex', 
+      flexDirection: 'column', 
+      alignItems: 'center', 
+      gap: '8px', 
+      zIndex: 2, 
+      cursor: isDragging ? 'grabbing' : 'grab', 
+      transition: isDragging ? 'none' : 'all 0.2s cubic-bezier(0.23, 1, 0.32, 1)' 
+    }}
   >
     <div style={{ 
       width: size + 'px', 
@@ -243,7 +254,11 @@ export const SettingsModal = ({
         const rect = editor.getBoundingClientRect();
         const x = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
         const y = Math.max(0, Math.min(1, (e.clientY - rect.top) / rect.height));
-        updateHsl(draggingField, { h: x * 360, s: (1 - y) * 100 });
+        
+        // X -> Hue (0-360)
+        // Y -> Lightness (위로 갈수록 밝아짐: 80 - 30 범위 매핑)
+        const l = 80 - (y * 50); 
+        updateHsl(draggingField, { h: x * 360, l });
       } else if (isDraggingSlider) {
         const slider = document.getElementById('saturation-slider');
         if (!slider) return;
@@ -509,9 +524,10 @@ export const SettingsModal = ({
                     <ThemeBubble 
                       color={editColors.bgPrimary} 
                       size={54} 
+                      isDragging={draggingField === 'bgPrimary'}
                       active={selectedField === 'bgPrimary'} 
                       label="Background" 
-                      top={`${(1 - hexToHsl(editColors.bgPrimary).s / 100) * 100}%`} 
+                      top={`${(80 - hexToHsl(editColors.bgPrimary).l) / 50 * 100}%`} 
                       left={`calc(${(hexToHsl(editColors.bgPrimary).h / 360) * 100}% - 27px)`} 
                       onClick={() => setSelectedField('bgPrimary')} 
                       onMouseDown={(e) => handleDragStart(e, 'bgPrimary')}
@@ -519,9 +535,10 @@ export const SettingsModal = ({
                     <ThemeBubble 
                       color={editColors.accent} 
                       size={36} 
+                      isDragging={draggingField === 'accent'}
                       active={selectedField === 'accent'} 
                       label="Accent" 
-                      top={`${(1 - hexToHsl(editColors.accent).s / 100) * 100}%`} 
+                      top={`${(80 - hexToHsl(editColors.accent).l) / 50 * 100}%`} 
                       left={`calc(${(hexToHsl(editColors.accent).h / 360) * 100}% - 18px)`} 
                       onClick={() => setSelectedField('accent')} 
                       onMouseDown={(e) => handleDragStart(e, 'accent')}
@@ -529,9 +546,10 @@ export const SettingsModal = ({
                     <ThemeBubble 
                       color={editColors.textPrimary} 
                       size={24} 
+                      isDragging={draggingField === 'textPrimary'}
                       active={selectedField === 'textPrimary'} 
                       label="Text" 
-                      top={`${(1 - hexToHsl(editColors.textPrimary).s / 100) * 100}%`} 
+                      top={`${(80 - hexToHsl(editColors.textPrimary).l) / 50 * 100}%`} 
                       left={`calc(${(hexToHsl(editColors.textPrimary).h / 360) * 100}% - 12px)`} 
                       onClick={() => setSelectedField('textPrimary')} 
                       onMouseDown={(e) => handleDragStart(e, 'textPrimary')}
