@@ -256,11 +256,18 @@ export const SettingsModal = ({
         const rect = knob.getBoundingClientRect();
         const centerX = rect.left + rect.width / 2;
         const centerY = rect.top + rect.height / 2;
-        const angle = Math.atan2(e.clientY - centerY, e.clientX - centerX) * (180 / Math.PI);
-        // 각도를 0-100 범위의 밝기로 매핑 (가스레인지 다이얼 느낌)
-        // -180 ~ 180 -> 0 ~ 360으로 보정 후 30-80% 범위로 매핑
-        let normalizedAngle = (angle + 180) % 360; 
-        const l = 30 + (normalizedAngle / 360) * 50; 
+        const rawAngle = Math.atan2(e.clientY - centerY, e.clientX - centerX) * (180 / Math.PI);
+        
+        // 12시 방향을 0도로 설정
+        let angle = rawAngle + 90;
+        if (angle > 180) angle -= 360;
+        if (angle < -180) angle += 360;
+
+        // 회전 범위를 -135도 ~ 135도 (총 270도)로 제한
+        const clampedAngle = Math.max(-135, Math.min(135, angle));
+        
+        // -135(Min) -> 30%, 135(Max) -> 80% 밝기로 매핑 (중심 55%)
+        const l = 55 + (clampedAngle / 135) * 25;
         updateHsl(selectedField, { l });
       }
     };
@@ -587,7 +594,7 @@ export const SettingsModal = ({
                         </svg>
                       </div>
 
-                      {/* 밝기 노브 (로터리 다이얼) */}
+                      {/* 밝기 노브 (로터리 다이얼 - Gas Stove Style) */}
                       <div 
                         id="brightness-knob"
                         onMouseDown={(e) => {
@@ -596,6 +603,9 @@ export const SettingsModal = ({
                         }}
                         style={{ width: '60px', height: '60px', borderRadius: '50%', border: '4px dashed var(--border-color)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', position: 'relative', transition: 'transform 0.2s' }}
                       >
+                         {/* 12시 방향 고정 기준점 */}
+                         <div style={{ position: 'absolute', top: '-10px', left: '50%', transform: 'translateX(-50%)', width: '4px', height: '4px', borderRadius: '50%', background: 'var(--accent)', boxShadow: '0 0 8px var(--accent)' }}></div>
+                         
                          <div style={{ 
                            width: '40px', 
                            height: '40px', 
@@ -604,10 +614,10 @@ export const SettingsModal = ({
                            border: '2px solid white', 
                            boxShadow: '0 4px 12px rgba(0,0,0,0.2)',
                            position: 'relative',
-                           transform: `rotate(${(hexToHsl(editColors[selectedField]).l - 30) / 50 * 360}deg)`
+                           transform: `rotate(${(hexToHsl(editColors[selectedField]).l - 55) / 25 * 135}deg)`
                          }}>
-                           {/* 노브 포인트 (가스레인지 다이얼 표시) */}
-                           <div style={{ position: 'absolute', top: '4px', left: '50%', transform: 'translateX(-50%)', width: '6px', height: '6px', borderRadius: '50%', background: 'white', opacity: 0.8 }}></div>
+                           {/* 노브 포인트 (가스레인지 다이얼 표시 - 기준점과 정렬됨) */}
+                           <div style={{ position: 'absolute', top: '4px', left: '50%', transform: 'translateX(-50%)', width: '6px', height: '6px', borderRadius: '50%', background: 'white', opacity: 0.9 }}></div>
                          </div>
                       </div>
                     </div>
