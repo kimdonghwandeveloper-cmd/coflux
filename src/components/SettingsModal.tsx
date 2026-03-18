@@ -239,7 +239,9 @@ export const SettingsModal = ({
     const init: any = {};
     (['bgPrimary', 'accent', 'textPrimary'] as const).forEach(k => {
       const hsl = hexToHsl(baseColors[k]);
-      init[k] = { x: (hsl.h / 360) * 100, y: (80 - hsl.l) / 50 * 100 };
+      // Y축 클램핑: 명도가 범위를 벗어나도 0-100% 내에 머물게 함
+      const y = Math.max(0, Math.min(100, (80 - hsl.l) / 50 * 100));
+      init[k] = { x: (hsl.h / 360) * 100, y };
     });
     return init;
   });
@@ -333,9 +335,11 @@ export const SettingsModal = ({
     
     if (syncVisual) {
       const hsl = hexToHsl(value);
+      // 명도 기반 Y축 클램핑 (30-80% 범위를 넘어가는 흰색/검정 대응)
+      const y = Math.max(0, Math.min(100, (80 - hsl.l) / 50 * 100));
       setVisualPositions(prev => ({
         ...prev,
-        [key]: { x: (hsl.h / 360) * 100, y: (80 - hsl.l) / 50 * 100 }
+        [key]: { x: (hsl.h / 360) * 100, y }
       }));
     }
 
@@ -581,7 +585,7 @@ export const SettingsModal = ({
                   <div style={{ position: 'relative', zIndex: 1 }}>
                     <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: '8px', marginBottom: '20px' }}>
                       {[
-                        '#FFF9F0', '#F9E1E8', '#EBD4FB', '#DF8C96', '#E29774', '#D4CE82', '#6BE4A7', '#94A1C1',
+                        '#FFFFFF', '#000000', '#FFF9F0', '#F9E1E8', '#EBD4FB', '#DF8C96', '#E29774', '#D4CE82', '#6BE4A7', '#94A1C1',
                         '#FF9AA2', '#FFB7B2', '#FFDAC1', '#E2F0CB', '#B5EAD7', '#C7CEEA', '#97C1A9', '#55CBCD',
                         '#ABC4FF', '#EDF2FB', '#7400B8', '#6930C3', '#48BFE3'
                       ].map(c => (

@@ -5,6 +5,7 @@ import { TOGGLE_THEME_IDS } from '../lib/theme';
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, DragEndEvent, DragStartEvent, DragOverlay } from '@dnd-kit/core';
 import { SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy, useSortable, arrayMove } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
+import logo from '../assets/logo.png';
 
 // Sortable page item wrapper
 const SortablePageItem = ({ page, depth, activePageId, setActivePageId, openMenuId, setOpenMenuId, onUpdatePage, onDeletePage, menuRef, hasChildren, expandedIds, toggleExpand, getChildren, renderPageItem }: any) => {
@@ -180,7 +181,13 @@ export const Sidebar = ({
   );
 
   return (
-    <div className="sidebar" style={{ paddingTop: '16px' }}>
+    <div className="sidebar" style={{ paddingTop: '12px' }}>
+      {/* Brand Header */}
+      <div style={{ padding: '0 16px 20px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+        <img src={logo} alt="Coflux Logo" style={{ width: '28px', height: 'auto' }} />
+        <span style={{ fontSize: '18px', fontWeight: 800, letterSpacing: '-0.02em', color: 'var(--text-primary)', fontFamily: 'inherit' }}>Coflux</span>
+      </div>
+
       {/* Workspace Selector */}
       <div style={{ padding: '0 16px 24px', position: 'relative' }} ref={wsRef}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer', padding: '4px 0' }}

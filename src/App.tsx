@@ -11,6 +11,7 @@ import { KnowledgeMap } from './components/KnowledgeMap';
 import { invoke } from '@tauri-apps/api/core';
 import { applyTheme, resolveTheme, WorkspaceTheme, PRESET_THEMES } from './lib/theme';
 import { supabase, UserProfile } from './lib/supabase';
+import logo from './assets/logo.png';
 
 export interface WorkspaceData {
   id: string;
@@ -79,7 +80,7 @@ function App() {
         await invoke('coflux_sync_user_profile', { user: profile });
       }
 
-      const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
+      supabase.auth.onAuthStateChange(async (_event, session) => {
         if (session?.user) {
           // Supabase DB에서 최신 티어 정보 가져오기
           const { data: dbUser } = await supabase
@@ -202,9 +203,9 @@ function App() {
   if (isAuthLoading) {
     return (
       <div style={{ height: '100vh', width: '100vw', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg-primary)', color: 'var(--text-primary)' }}>
-        <div style={{ textAlign: 'center' }}>
-          <div style={{ fontSize: '24px', fontWeight: 700, marginBottom: '12px' }}>CoFlux</div>
-          <p style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>인증 정보 확인 중...</p>
+        <div style={{ textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '20px' }}>
+          <img src={logo} alt="CoFlux Logo" style={{ width: '80px', height: 'auto', marginBottom: '8px' }} />
+          <p style={{ fontSize: '13px', color: 'var(--text-secondary)', fontWeight: 500, letterSpacing: '0.02em' }}>인증 정보 확인 중...</p>
         </div>
       </div>
     );
