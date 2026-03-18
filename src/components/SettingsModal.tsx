@@ -220,6 +220,8 @@ export const SettingsModal = ({
   const [isDarkCustom, setIsDarkCustom] = useState(savedCustomTheme?.isDark ?? false);
   const [selectedField, setSelectedField] = useState<keyof ThemeColors>('accent');
   const [draggingField, setDraggingField] = useState<keyof ThemeColors | null>(null);
+  const [isDraggingSlider, setIsDraggingSlider] = useState(false);
+  const [isDraggingKnob, setIsDraggingKnob] = useState(false);
 
   // HSL 조절 헬퍼
   const updateHsl = (key: keyof ThemeColors, { h, s, l }: { h?: number; s?: number; l?: number }) => {
@@ -232,25 +234,59 @@ export const SettingsModal = ({
     handleColorChange(key, nextHex);
   };
 
+  // 전역 마우스 이벤트 핸들러
+  useEffect(() => {
+    const handleGlobalMouseMove = (e: MouseEvent) => {
+      if (draggingField) {
+        const editor = document.getElementById('visual-theme-editor');
+        if (!editor) return;
+        const rect = editor.getBoundingClientRect();
+        const x = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+        const y = Math.max(0, Math.min(1, (e.clientY - rect.top) / rect.height));
+        updateHsl(draggingField, { h: x * 360, s: (1 - y) * 100 });
+      } else if (isDraggingSlider) {
+        const slider = document.getElementById('saturation-slider');
+        if (!slider) return;
+        const rect = slider.getBoundingClientRect();
+        const s = Math.max(0, Math.min(100, ((e.clientX - rect.left) / rect.width) * 100));
+        updateHsl(selectedField, { s });
+      } else if (isDraggingKnob) {
+        const knob = document.getElementById('brightness-knob');
+        if (!knob) return;
+        const rect = knob.getBoundingClientRect();
+        const centerX = rect.left + rect.width / 2;
+        const centerY = rect.top + rect.height / 2;
+        const angle = Math.atan2(e.clientY - centerY, e.clientX - centerX) * (180 / Math.PI);
+        // 각도를 0-100 범위의 밝기로 매핑 (가스레인지 다이얼 느낌)
+        // -180 ~ 180 -> 0 ~ 360으로 보정 후 30-80% 범위로 매핑
+        let normalizedAngle = (angle + 180) % 360; 
+        const l = 30 + (normalizedAngle / 360) * 50; 
+        updateHsl(selectedField, { l });
+      }
+    };
+
+    const handleGlobalMouseUp = () => {
+      setDraggingField(null);
+      setIsDraggingSlider(false);
+      setIsDraggingKnob(false);
+    };
+
+    if (draggingField || isDraggingSlider || isDraggingKnob) {
+      window.addEventListener('mousemove', handleGlobalMouseMove);
+      window.addEventListener('mouseup', handleGlobalMouseUp);
+    }
+
+    return () => {
+      window.removeEventListener('mousemove', handleGlobalMouseMove);
+      window.removeEventListener('mouseup', handleGlobalMouseUp);
+    };
+  }, [draggingField, isDraggingSlider, isDraggingKnob, selectedField, editColors]);
+
   const handleDragStart = (e: React.MouseEvent, key: keyof ThemeColors) => {
+    e.preventDefault();
     e.stopPropagation();
     setSelectedField(key);
     setDraggingField(key);
-  };
-
-  const handleEditorMouseMove = (e: React.MouseEvent) => {
-    if (!draggingField) return;
-    const rect = e.currentTarget.getBoundingClientRect();
-    const x = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
-    const y = Math.max(0, Math.min(1, (e.clientY - rect.top) / rect.height));
-    
-    // X 좌표 -> Hue (0-360)
-    // Y 좌표 -> Saturation (0-100, 위로 갈수록 진하게: 1-y)
-    updateHsl(draggingField, { h: x * 360, s: (1 - y) * 100 });
-  };
-
-  const handleDragEnd = () => {
-    setDraggingField(null);
   };
 
   const handleColorChange = (key: keyof ThemeColors, value: string) => {
@@ -423,9 +459,7 @@ export const SettingsModal = ({
 
                 {/* 비주얼 테마 에디터 (이미지 기반) */}
                 <div 
-                  onMouseMove={handleEditorMouseMove}
-                  onMouseUp={handleDragEnd}
-                  onMouseLeave={handleDragEnd}
+                  id="visual-theme-editor"
                   style={{ 
                     marginTop: '12px', 
                     background: 'var(--bg-secondary)', 
@@ -526,10 +560,12 @@ export const SettingsModal = ({
                     <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
                       {/* 채도 슬라이더 (웨이브) */}
                       <div 
+                        id="saturation-slider"
                         onMouseDown={(e) => {
                           const rect = e.currentTarget.getBoundingClientRect();
-                          const s = ((e.clientX - rect.left) / rect.width) * 100;
+                          const s = Math.max(0, Math.min(100, ((e.clientX - rect.left) / rect.width) * 100));
                           updateHsl(selectedField, { s });
+                          setIsDraggingSlider(true);
                         }}
                         style={{ flex: 1, position: 'relative', height: '12px', background: 'var(--bg-primary)', borderRadius: '6px', border: '1px solid var(--border-color)', cursor: 'pointer' }}
                       >
@@ -537,30 +573,42 @@ export const SettingsModal = ({
                           position: 'absolute', 
                           top: '50%', 
                           left: `${hexToHsl(editColors[selectedField]).s}%`, 
-                          width: '16px', 
-                          height: '32px', 
+                          width: '18px', 
+                          height: '34px', 
                           background: 'white', 
                           borderRadius: '4px', 
                           transform: 'translate(-50%, -50%)', 
-                          boxShadow: '0 2px 8px rgba(0,0,0,0.2)',
-                          transition: 'left 0.1s'
+                          boxShadow: '0 2px 10px rgba(0,0,0,0.3)',
+                          transition: isDraggingSlider ? 'none' : 'left 0.2s',
+                          zIndex: 2
                         }}></div>
                         <svg width="100%" height="100%" viewBox="0 0 200 12" preserveAspectRatio="none" style={{ position: 'absolute', top: 0, left: 0, opacity: 0.2 }}>
                           <path d="M0,6 Q25,0 50,6 T100,6 T150,6 T200,6" fill="none" stroke="currentColor" strokeWidth="2" />
                         </svg>
                       </div>
 
-                      {/* 밝기 노브 (원형) */}
+                      {/* 밝기 노브 (로터리 다이얼) */}
                       <div 
-                        onClick={() => {
-                          const l = hexToHsl(editColors[selectedField]).l;
-                          // 클릭 시마다 미세하게 밝기 순환 (가이드에 따른 눈 편안한 범위 30~80%)
-                          const nextL = l > 70 ? 30 : l + 10;
-                          updateHsl(selectedField, { l: nextL });
+                        id="brightness-knob"
+                        onMouseDown={(e) => {
+                          e.preventDefault();
+                          setIsDraggingKnob(true);
                         }}
-                        style={{ width: '48px', height: '48px', borderRadius: '50%', border: '4px dashed var(--border-color)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', transition: 'transform 0.2s' }}
+                        style={{ width: '60px', height: '60px', borderRadius: '50%', border: '4px dashed var(--border-color)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', position: 'relative', transition: 'transform 0.2s' }}
                       >
-                         <div style={{ width: '32px', height: '32px', borderRadius: '50%', background: editColors[selectedField], border: '2px solid white', boxShadow: '0 0 10px rgba(0,0,0,0.1)' }}></div>
+                         <div style={{ 
+                           width: '40px', 
+                           height: '40px', 
+                           borderRadius: '50%', 
+                           background: editColors[selectedField], 
+                           border: '2px solid white', 
+                           boxShadow: '0 4px 12px rgba(0,0,0,0.2)',
+                           position: 'relative',
+                           transform: `rotate(${(hexToHsl(editColors[selectedField]).l - 30) / 50 * 360}deg)`
+                         }}>
+                           {/* 노브 포인트 (가스레인지 다이얼 표시) */}
+                           <div style={{ position: 'absolute', top: '4px', left: '50%', transform: 'translateX(-50%)', width: '6px', height: '6px', borderRadius: '50%', background: 'white', opacity: 0.8 }}></div>
+                         </div>
                       </div>
                     </div>
                   </div>
