@@ -30,12 +30,16 @@ mobile/
 src-tauri/target/
 src-tauri/compile.log
 src-tauri/clippy_report.txt
+src-tauri/build_log.txt
 
 # AI Artifacts & Environment
 .gemini/
 .env
 .env.local
 .env.*.local
+
+# Supabase
+supabase/.temp/
 
 # OS
 Thumbs.db
