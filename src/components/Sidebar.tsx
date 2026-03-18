@@ -5,10 +5,12 @@ import { TOGGLE_THEME_IDS } from '../lib/theme';
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, DragEndEvent, DragStartEvent, DragOverlay } from '@dnd-kit/core';
 import { SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy, useSortable, arrayMove } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
+import { useTranslation } from 'react-i18next';
 import logo from '../assets/logo.png';
 
 // Sortable page item wrapper
 const SortablePageItem = ({ page, depth, activePageId, setActivePageId, openMenuId, setOpenMenuId, onUpdatePage, onDeletePage, menuRef, hasChildren, expandedIds, toggleExpand, getChildren, renderPageItem }: any) => {
+  const { t } = useTranslation();
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: page.id });
   const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.5 : 1, };
 
@@ -50,13 +52,13 @@ const SortablePageItem = ({ page, depth, activePageId, setActivePageId, openMenu
             <div className="sidebar-item" style={{ margin: 0, padding: '6px 8px' }}
               onClick={(e) => { e.stopPropagation(); onUpdatePage({ ...page, isFavorite: !page.isFavorite }); setOpenMenuId(null); }}>
               <Star size={14} fill={page.isFavorite ? 'currentColor' : 'none'} color={page.isFavorite ? 'var(--accent)' : 'var(--text-secondary)'} />
-              <span style={{ fontSize: '13px' }}>{page.isFavorite ? 'Remove from Favorites' : 'Add to Favorites'}</span>
+              <span style={{ fontSize: '13px' }}>{page.isFavorite ? t('remove_from_favorites') : t('add_to_favorites')}</span>
             </div>
             <div style={{ height: '1px', background: 'var(--border-color)', margin: '4px 0' }} />
             <div className="sidebar-item" style={{ margin: 0, padding: '6px 8px', color: 'var(--error)' }}
               onClick={(e) => { e.stopPropagation(); onDeletePage(page.id); setOpenMenuId(null); }}>
               <Trash2 size={14} />
-              <span style={{ fontSize: '13px' }}>Delete</span>
+              <span style={{ fontSize: '13px' }}>{t('delete')}</span>
             </div>
           </div>
         )}
@@ -105,6 +107,7 @@ export const Sidebar = ({
   onOpenSettings: () => void,
   onReorderPages: (ids: string[]) => void
 }) => {
+  const { t } = useTranslation();
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [activeDragPage, setActiveDragPage] = useState<PageData | null>(null);
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
@@ -193,8 +196,8 @@ export const Sidebar = ({
       <div style={{ padding: '0 16px 24px', position: 'relative' }} ref={wsRef}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer', padding: '4px 0' }}
           onClick={() => setShowWsDropdown(!showWsDropdown)}>
-          <div style={{ width: '28px', height: '28px', borderRadius: '6px', backgroundColor: '#000', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: '14px' }}>{activeWs?.icon || 'M'}</div>
-          <div style={{ fontSize: '15px', fontWeight: 600, flex: 1 }}>{activeWs?.name || 'My Workspace'}</div>
+          <div style={{ width: '28px', height: '28px', borderRadius: '6px', backgroundColor: '#000', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: '14px' }}>{activeWs?.icon || 'W'}</div>
+          <div style={{ fontSize: '15px', fontWeight: 600, flex: 1 }}>{activeWs?.name || t('my_workspace')}</div>
           <ChevronDown size={14} color="var(--text-secondary)" />
         </div>
 
@@ -212,7 +215,7 @@ export const Sidebar = ({
             <div style={{ display: 'flex', gap: '4px', padding: '4px' }}>
               <input type="text" value={newWsName} onChange={e => setNewWsName(e.target.value)}
                 onKeyDown={e => { if (e.key === 'Enter' && newWsName.trim()) { onAddWorkspace(newWsName.trim()); setNewWsName(''); setShowWsDropdown(false); } }}
-                placeholder="New workspace..."
+                placeholder={t('new_workspace')}
                 style={{ flex: 1, border: '1px solid var(--border-color)', borderRadius: '4px', padding: '4px 8px', fontSize: '12px', background: 'var(--bg-secondary)', color: 'var(--text-primary)', outline: 'none' }} />
               <div onClick={() => { if (newWsName.trim()) { onAddWorkspace(newWsName.trim()); setNewWsName(''); setShowWsDropdown(false); } }}
                 style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', padding: '4px' }}>
@@ -226,14 +229,14 @@ export const Sidebar = ({
       <div style={{ flex: 1, overflowY: 'auto' }}>
         {favoriteRoots.length > 0 && (
           <div style={{ marginBottom: '16px' }}>
-            <div style={{ padding: '0 16px 8px', fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Favorites</div>
+            <div style={{ padding: '0 16px 8px', fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>{t('favorites')}</div>
             {favoriteRoots.map(p => renderPageItem(p, 0))}
           </div>
         )}
 
         <div>
           <div style={{ padding: '0 16px 8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <div style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Private</div>
+            <div style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>{t('private')}</div>
             <div onClick={onAddPage} style={{ cursor: 'pointer', padding: '2px', display: 'flex' }}>
               <Plus size={16} color="var(--text-secondary)" />
             </div>
@@ -264,7 +267,7 @@ export const Sidebar = ({
                 }}>
                   <span style={{ fontSize: '15px' }}>{activeDragPage.icon}</span>
                   <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                    {activeDragPage.title || 'Untitled'}
+                    {activeDragPage.title || t('untitled')}
                   </span>
                 </div>
               )}
@@ -279,7 +282,7 @@ export const Sidebar = ({
             onClick={() => setShowTrash(!showTrash)}>
             <Trash2 size={12} color="var(--text-secondary)" />
             <div style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-              Trash {trashedPages.length > 0 && `(${trashedPages.length})`}
+              {trashedPages.length > 0 ? t('trash_count', { count: trashedPages.length }) : t('trash')}
             </div>
             {trashedPages.length > 0 && (
               showTrash ? <ChevronDown size={12} color="var(--text-secondary)" /> : <ChevronRight size={12} color="var(--text-secondary)" />
@@ -307,9 +310,9 @@ export const Sidebar = ({
       </div>
 
       <div style={{ padding: '12px 16px', borderTop: '1px solid var(--border-color)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <div className="sidebar-item" style={{ margin: 0, padding: '4px 8px', gap: '8px' }} title="Settings" onClick={onOpenSettings}>
+        <div className="sidebar-item" style={{ margin: 0, padding: '4px 8px', gap: '8px' }} title={t('settings')} onClick={onOpenSettings}>
           <Settings size={16} color="var(--text-secondary)" />
-          <span style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>Settings</span>
+          <span style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>{t('settings')}</span>
         </div>
         {TOGGLE_THEME_IDS.includes(activeThemeId) && (
           <div className="sidebar-item" style={{ margin: 0, padding: '8px', justifyContent: 'center' }} onClick={toggleTheme} title="Toggle Theme">

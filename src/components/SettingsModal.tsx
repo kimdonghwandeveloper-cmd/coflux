@@ -233,6 +233,11 @@ export const SettingsModal = ({
   const [draggingField, setDraggingField] = useState<keyof ThemeColors | null>(null);
   const [isDraggingSlider, setIsDraggingSlider] = useState(false);
   const [isDraggingKnob, setIsDraggingKnob] = useState(false);
+  
+  // E28: Custom Login Modal States
+  const [showLoginPrompt, setShowLoginPrompt] = useState(false);
+  const [loginEmail, setLoginEmail] = useState('');
+  const [isSendingLink, setIsSendingLink] = useState(false);
 
   // 시각적 좌표 상태 (H, L 매핑용 - 무채색 시 Hue 보존 및 조절 바 조작 시 위치 고정용)
   const [visualPositions, setVisualPositions] = useState<{ [key in keyof ThemeColors]: { x: number, y: number } }>(() => {
@@ -392,11 +397,29 @@ export const SettingsModal = ({
   };
 
   const handleMagicLinkLogin = async () => {
-    const email = window.prompt('로그인할 이메일을 입력하세요:');
-    if (email) {
-      const { error } = await supabase.auth.signInWithOtp({ email });
-      if (error) alert('로그인 요청 실패: ' + error.message);
-      else alert('로그인 링크가 이메일로 전송되었습니다.');
+    setShowLoginPrompt(true);
+  };
+
+  const submitMagicLink = async () => {
+    if (!loginEmail.trim()) {
+      alert('이메일 주소를 입력해주세요.');
+      return;
+    }
+    
+    setIsSendingLink(true);
+    try {
+      const { error } = await supabase.auth.signInWithOtp({ email: loginEmail });
+      if (error) {
+        alert('로그인 요청 실패: ' + error.message);
+      } else {
+        alert('로그인 링크가 이메일로 전송되었습니다. (받은 편지함을 확인해주세요)');
+        setShowLoginPrompt(false);
+        setLoginEmail('');
+      }
+    } catch (e) {
+      alert('오류 발생: ' + e);
+    } finally {
+      setIsSendingLink(false);
     }
   };
 
@@ -877,6 +900,53 @@ export const SettingsModal = ({
           </div>
         </div>
       </div>
+
+      {/* E28: Custom Login Prompt Modal */}
+      {showLoginPrompt && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(4px)', zIndex: 600, display: 'flex', alignItems: 'center', justifyContent: 'center', animation: 'fadeIn 0.2s ease-out' }}>
+          <div style={{ background: 'var(--bg-primary)', borderRadius: '16px', width: '400px', padding: '32px', boxShadow: '0 24px 64px rgba(0,0,0,0.3)', border: '1px solid var(--border-color)', display: 'flex', flexDirection: 'column', gap: '20px', animation: 'slideUpFade 0.2s ease-out forwards' }}>
+            <div>
+              <h3 style={{ margin: '0 0 8px', fontSize: '20px', fontWeight: 700, color: 'var(--text-primary)' }}>CoFlux 로그인</h3>
+              <p style={{ margin: 0, fontSize: '13px', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+                매직 링크를 받을 이메일 주소를 입력해주세요.<br/>비밀번호 없이 안전하게 로그인할 수 있습니다.
+              </p>
+            </div>
+            
+            <input 
+              type="email" 
+              placeholder="name@example.com" 
+              autoFocus
+              value={loginEmail}
+              onChange={e => setLoginEmail(e.target.value)}
+              onKeyDown={e => {
+                if (e.key === 'Enter') submitMagicLink();
+                if (e.key === 'Escape') setShowLoginPrompt(false);
+              }}
+              style={{ width: '100%', padding: '14px 16px', borderRadius: '10px', border: '1px solid var(--border-color)', background: 'var(--bg-secondary)', color: 'var(--text-primary)', fontSize: '15px', outline: 'none', transition: 'border 0.2s' }}
+              onFocus={e => (e.target.style.border = '1px solid var(--accent)')}
+              onBlur={e => (e.target.style.border = '1px solid var(--border-color)')}
+            />
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '8px' }}>
+              <button 
+                onClick={() => setShowLoginPrompt(false)}
+                disabled={isSendingLink}
+                style={{ padding: '10px 16px', borderRadius: '8px', border: 'none', background: 'transparent', color: 'var(--text-secondary)', fontSize: '14px', fontWeight: 600, cursor: 'pointer' }}
+              >
+                취소
+              </button>
+              <button 
+                onClick={submitMagicLink}
+                disabled={isSendingLink || !loginEmail.trim()}
+                style={{ padding: '10px 20px', borderRadius: '8px', border: 'none', background: 'var(--text-primary)', color: 'var(--bg-primary)', fontSize: '14px', fontWeight: 600, cursor: (isSendingLink || !loginEmail.trim()) ? 'not-allowed' : 'pointer', opacity: (isSendingLink || !loginEmail.trim()) ? 0.5 : 1 }}
+              >
+                {isSendingLink ? '전송 중...' : '계속하기'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 };

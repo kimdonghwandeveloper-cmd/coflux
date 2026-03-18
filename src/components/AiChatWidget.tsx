@@ -6,6 +6,7 @@ import { routeAiTask } from '../lib/ai_router';
 import { listen, UnlistenFn } from '@tauri-apps/api/event';
 import { invoke } from '@tauri-apps/api/core';
 import { ragQuery, PageScope, RagSource } from '../lib/rag';
+import { useTranslation } from 'react-i18next';
 
 interface Message {
   sender: string;
@@ -25,6 +26,7 @@ export const AiChatWidget = ({
   pageId?: string;
   workspaceId?: string;
 }) => {
+  const { t } = useTranslation();
   const [messages, setMessages] = useState<Message[]>(sharedChat.toArray());
   const [input, setInput] = useState('');
   const [ragScope, setRagScope] = useState<PageScope | 'off'>('off');
@@ -154,7 +156,7 @@ export const AiChatWidget = ({
           <div style={{ textAlign: 'center', marginTop: '60px' }}>
             <Sparkles size={32} color="var(--accent)" style={{ opacity: 0.5, marginBottom: '12px' }} />
             <p style={{ fontSize:'13px', color:'var(--text-secondary)' }}>
-              How can I help you with your workspace today?
+              {t('chat_empty_msg')}
             </p>
           </div>
         )}
@@ -163,10 +165,10 @@ export const AiChatWidget = ({
       <div style={{ display: 'flex', gap: '4px', marginBottom: '8px', padding: '4px', backgroundColor: 'var(--bg-secondary)', borderRadius: '8px', border: '1px solid var(--border-color)', alignItems: 'center' }}>
         <div style={{ display: 'flex', gap: '4px', flex: 1 }}>
           {[
-            { id: 'off', icon: <Search size={14} />, label: 'Chat' },
-            { id: 'current', icon: <Layout size={14} />, label: 'Page' },
-            { id: 'workspace', icon: <Database size={14} />, label: 'WS' },
-            { id: 'all', icon: <Globe size={14} />, label: 'All' },
+            { id: 'off', icon: <Search size={14} />, label: t('chat_scope_chat') },
+            { id: 'current', icon: <Layout size={14} />, label: t('chat_scope_page') },
+            { id: 'workspace', icon: <Database size={14} />, label: t('chat_scope_ws') },
+            { id: 'all', icon: <Globe size={14} />, label: t('chat_scope_all') },
           ].map(s => (
             <button
               key={s.id}
@@ -213,7 +215,7 @@ export const AiChatWidget = ({
               paddingLeft: '8px'
             }}
           >
-            <Globe size={14} /> Web
+            <Globe size={14} /> {t('chat_include_web')}
           </button>
         )}
       </div>
@@ -223,7 +225,7 @@ export const AiChatWidget = ({
           style={{ flex: 1, padding: '10px 14px', borderRadius: '8px', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-color)', color: 'var(--text-color)', fontSize: '14px' }}
           value={input}
           onChange={e => setInput(e.target.value)}
-          placeholder={ragScope === 'off' ? "Ask AI..." : `Search in ${ragScope}...`}
+          placeholder={ragScope === 'off' ? t('chat_placeholder_chat') : t('chat_placeholder_search', { scope: ragScope })}
           onKeyDown={e => e.key === 'Enter' && handleSend()}
           disabled={isQuerying}
         />

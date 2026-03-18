@@ -11,7 +11,9 @@ import { KnowledgeMap } from './components/KnowledgeMap';
 import { invoke } from '@tauri-apps/api/core';
 import { applyTheme, resolveTheme, WorkspaceTheme, PRESET_THEMES, getContrastColor } from './lib/theme';
 import { supabase, UserProfile } from './lib/supabase';
+import './lib/i18n'; // E28: i18n 초기화
 import logo from './assets/logo.png';
+import { useTranslation } from 'react-i18next'; // E28: useTranslation 훅 추가
 
 export interface WorkspaceData {
   id: string;
@@ -36,6 +38,8 @@ export interface PageData {
 }
 
 function App() {
+  const { t } = useTranslation(); // E28: useTranslation 훅 추가
+
   const [theme, setTheme] = useState<'light' | 'dark'>('light');
   const [activeThemeId, setActiveThemeId] = useState<string>('notion-light');
   const [activeTheme, setActiveTheme] = useState<WorkspaceTheme>(PRESET_THEMES[0]);
@@ -49,6 +53,9 @@ function App() {
 
   const [user, setUser] = useState<UserProfile | null>(null);
   const [isAuthLoading, setIsAuthLoading] = useState(true);
+  const [showLoginPrompt, setShowLoginPrompt] = useState(false); // E28: 로그인 프롬프트 상태
+  const [loginEmail, setLoginEmail] = useState(''); // E28: 로그인 이메일 상태
+  const [isSendingLink, setIsSendingLink] = useState(false); // E28: 매직 링크 전송 중 상태
 
   const [workspaces, setWorkspaces] = useState<WorkspaceData[]>([]);
   const [activeWorkspaceId, setActiveWorkspaceId] = useState<string | null>(null);
@@ -80,6 +87,8 @@ function App() {
         };
         setUser(profile);
         await invoke('coflux_sync_user_profile', { user: profile });
+      } else {
+        setShowLoginPrompt(true); // E28: 세션 없으면 로그인 프롬프트 표시
       }
 
       supabase.auth.onAuthStateChange(async (_event, session) => {
@@ -99,9 +108,11 @@ function App() {
           };
           setUser(profile);
           await invoke('coflux_sync_user_profile', { user: profile });
+          setShowLoginPrompt(false); // E28: 로그인 성공 시 프롬프트 닫기
         } else {
           setUser(null);
           await invoke('coflux_logout_local');
+          setShowLoginPrompt(true); // E28: 로그아웃 시 로그인 프롬프트 표시
         }
       });
 
@@ -115,6 +126,30 @@ function App() {
       });
     };
   }, []);
+
+  // E28: 매직 링크 전송 함수
+  const submitMagicLink = async () => {
+    if (!loginEmail.trim()) {
+      alert(t('alert_enter_email'));
+      return;
+    }
+    
+    setIsSendingLink(true);
+    try {
+      const { error } = await supabase.auth.signInWithOtp({ email: loginEmail });
+      if (error) {
+        alert(`${t('alert_login_failed')} ${error.message}`);
+      } else {
+        alert(t('alert_login_success'));
+        setShowLoginPrompt(false);
+        setLoginEmail('');
+      }
+    } catch (e) {
+      alert('Error: ' + e);
+    } finally {
+      setIsSendingLink(false);
+    }
+  };
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -207,7 +242,7 @@ function App() {
       <div style={{ height: '100vh', width: '100vw', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg-primary)', color: 'var(--text-primary)' }}>
         <div style={{ textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '20px' }}>
           <img src={logo} alt="CoFlux Logo" style={{ width: '80px', height: 'auto', marginBottom: '8px' }} />
-          <p style={{ fontSize: '13px', color: 'var(--text-secondary)', fontWeight: 500, letterSpacing: '0.02em' }}>인증 정보 확인 중...</p>
+          <p style={{ fontSize: '13px', color: 'var(--text-secondary)', fontWeight: 500, letterSpacing: '0.02em' }}>{t('auth_loading_message')}</p>
         </div>
       </div>
     );
@@ -431,6 +466,52 @@ function App() {
           }}
           onClose={() => setSettingsOpen(false)}
         />
+      )}
+
+      {/* E28: Custom Login Prompt Modal */}
+      {showLoginPrompt && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(4px)', zIndex: 600, display: 'flex', alignItems: 'center', justifyContent: 'center', animation: 'fadeIn 0.2s ease-out' }}>
+          <div style={{ background: 'var(--bg-primary)', borderRadius: '16px', width: '400px', padding: '32px', boxShadow: '0 24px 64px rgba(0,0,0,0.3)', border: '1px solid var(--border-color)', display: 'flex', flexDirection: 'column', gap: '20px', animation: 'slideUpFade 0.2s ease-out forwards' }}>
+            <div>
+              <h3 style={{ margin: '0 0 8px', fontSize: '20px', fontWeight: 700, color: 'var(--text-primary)' }}>{t('login_prompt_title')}</h3>
+              <p style={{ margin: 0, fontSize: '13px', color: 'var(--text-secondary)', lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>
+                {t('login_prompt_desc')}
+              </p>
+            </div>
+            
+            <input 
+              type="email" 
+              placeholder={t('placeholder_email')} 
+              autoFocus
+              value={loginEmail}
+              onChange={e => setLoginEmail(e.target.value)}
+              onKeyDown={e => {
+                if (e.key === 'Enter') submitMagicLink();
+                if (e.key === 'Escape') setShowLoginPrompt(false);
+              }}
+              style={{ width: '100%', padding: '14px 16px', borderRadius: '10px', border: '1px solid var(--border-color)', background: 'var(--bg-secondary)', color: 'var(--text-primary)', fontSize: '15px', outline: 'none', transition: 'border 0.2s' }}
+              onFocus={e => (e.target.style.border = '1px solid var(--accent)')}
+              onBlur={e => (e.target.style.border = '1px solid var(--border-color)')}
+            />
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '8px' }}>
+              <button 
+                onClick={() => setShowLoginPrompt(false)}
+                disabled={isSendingLink}
+                style={{ padding: '10px 16px', borderRadius: '8px', border: 'none', background: 'transparent', color: 'var(--text-secondary)', fontSize: '14px', fontWeight: 600, cursor: 'pointer' }}
+              >
+                {t('btn_cancel')}
+              </button>
+              <button 
+                onClick={submitMagicLink}
+                disabled={isSendingLink || !loginEmail.trim()}
+                style={{ padding: '10px 20px', borderRadius: '8px', border: 'none', background: 'var(--text-primary)', color: 'var(--bg-primary)', fontSize: '14px', fontWeight: 600, cursor: (isSendingLink || !loginEmail.trim()) ? 'not-allowed' : 'pointer', opacity: (isSendingLink || !loginEmail.trim()) ? 0.5 : 1 }}
+              >
+                {isSendingLink ? t('btn_sending') : t('btn_continue')}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
