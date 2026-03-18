@@ -112,6 +112,16 @@ pub fn init_db(app_handle: &tauri::AppHandle) -> Result<()> {
         [],
     )?;
 
+    // Create a table for custom manual links created in Knowledge Map
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS manual_links (
+            source_page_id TEXT NOT NULL,
+            target_page_id TEXT NOT NULL,
+            PRIMARY KEY (source_page_id, target_page_id)
+        )",
+        [],
+    )?;
+
     // Seed a default workspace if none exists
     let ws_count: i64 = conn.query_row("SELECT COUNT(*) FROM workspaces", [], |row| row.get(0))?;
     if ws_count == 0 {
@@ -371,6 +381,33 @@ pub fn get_asset(id: String) -> Result<String, String> {
             |row| row.get(0),
         ).map_err(|e| e.to_string())?;
         Ok(data)
+    } else {
+        Err("Database not initialized".into())
+    }
+}
+// ── Manual Links CRUD ──────────────────────────────────────────
+
+#[tauri::command]
+pub fn coflux_add_manual_link(source_id: String, target_id: String) -> Result<(), String> {
+    if let Some(conn) = DB_CONN.lock().unwrap().as_ref() {
+        conn.execute(
+            "INSERT OR IGNORE INTO manual_links (source_page_id, target_page_id) VALUES (?1, ?2)",
+            params![source_id, target_id],
+        ).map_err(|e| e.to_string())?;
+        Ok(())
+    } else {
+        Err("Database not initialized".into())
+    }
+}
+
+#[tauri::command]
+pub fn coflux_remove_manual_link(source_id: String, target_id: String) -> Result<(), String> {
+    if let Some(conn) = DB_CONN.lock().unwrap().as_ref() {
+        conn.execute(
+            "DELETE FROM manual_links WHERE source_page_id = ?1 AND target_page_id = ?2",
+            params![source_id, target_id],
+        ).map_err(|e| e.to_string())?;
+        Ok(())
     } else {
         Err("Database not initialized".into())
     }

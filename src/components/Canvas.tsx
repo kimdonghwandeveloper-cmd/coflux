@@ -208,6 +208,23 @@ const CollaborativeEditor = ({ provider, currentTheme, workspaceTheme, onAddSubP
     uploadFile
   });
 
+  // Listen for AI page generation markdown inject event
+  useEffect(() => {
+    const handler = async (e: any) => {
+      const { pageId: targetPageId, markdown } = e.detail;
+      if (targetPageId === pageId && editor) {
+        try {
+          const blocks = await editor.tryParseMarkdownToBlocks(markdown);
+          editor.replaceBlocks(editor.document, blocks);
+        } catch (err) {
+          console.error('[Canvas] Failed to parse markdown:', err);
+        }
+      }
+    };
+    window.addEventListener('coflux-inject-markdown', handler);
+    return () => window.removeEventListener('coflux-inject-markdown', handler);
+  }, [pageId, editor]);
+
   // Auto-index page content for semantic search (debounced 5s)
   const indexTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {

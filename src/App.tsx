@@ -395,6 +395,25 @@ function App() {
               pageTitle={pages.find(p => p.id === activePageId)?.title}
               pageId={activePageId || undefined}
               workspaceId={activeWorkspaceId || undefined}
+              onSaveAsPage={async (title, markdown) => {
+                const newId = Date.now().toString();
+                const newPage: PageData = {
+                  id: newId, title, icon: '📄', updatedAt: new Date().toLocaleDateString(),
+                  coverImage: null, isFavorite: false, workspaceId: activeWorkspaceId,
+                  parentId: undefined, isDeleted: false, titleColor: null, titleBgColor: null
+                };
+                try {
+                  await invoke('save_page', { page: newPage });
+                  setPages(prev => [...prev, newPage]);
+                  setActivePageId(newId);
+                  
+                  // 새 페이지 렌더링 이후 Markdown 삽입
+                  setTimeout(() => {
+                    window.dispatchEvent(new CustomEvent('coflux-inject-markdown', { detail: { pageId: newId, markdown } }));
+                  }, 150);
+                  setChatOpen(false);
+                } catch (e) { console.error(e); }
+              }}
             />
           </div>
         )}
@@ -431,7 +450,7 @@ function App() {
       {/* Knowledge Map */}
       {knowledgeMapOpen && (
         <KnowledgeMap
-          pages={pages}
+          pages={workspacePages}
           activePageId={activePageId || ''}
           onNavigate={(id) => { setActivePageId(id); }}
           onClose={() => setKnowledgeMapOpen(false)}

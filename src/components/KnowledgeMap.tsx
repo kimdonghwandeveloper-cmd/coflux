@@ -10,12 +10,16 @@ import {
   useEdgesState,
   NodeMouseHandler,
   BackgroundVariant,
+  Handle,
+  Position,
+  Connection,
+  addEdge,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import dagre from '@dagrejs/dagre';
 import { X, GitBranch } from 'lucide-react';
 import { PageData } from '../App';
-import { getAllLinks } from '../lib/embeddings';
+import { getAllLinks, addManualLink, removeManualLink } from '../lib/embeddings';
 
 // ─── Dagre 자동 레이아웃 ─────────────────────────────────────────────────────
 
@@ -59,9 +63,12 @@ function PageNode({ data }: { data: { icon: string; title: string; isActive: boo
       whiteSpace: 'nowrap',
       overflow: 'hidden',
       textOverflow: 'ellipsis',
+      position: 'relative'
     }}>
+      <Handle type="target" position={Position.Top} style={{ background: 'var(--text-secondary)', width: 6, height: 6, opacity: 0.5 }} />
       <span style={{ fontSize: '15px' }}>{data.icon}</span>
       <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{data.title}</span>
+      <Handle type="source" position={Position.Bottom} style={{ background: 'var(--text-secondary)', width: 6, height: 6, opacity: 0.5 }} />
     </div>
   );
 }
@@ -114,9 +121,9 @@ export function KnowledgeMap({ pages, activePageId, onNavigate, onClose }: Knowl
         id: `wiki-${s}-${t}`,
         source: s,
         target: t,
-        style: { stroke: 'var(--accent)', strokeWidth: 1.5, strokeDasharray: '5 4' },
+        style: { stroke: 'var(--accent)', strokeWidth: 1.5, strokeDasharray: '3 3' },
         animated: true,
-        label: '[[]]',
+        label: t === s ? undefined : 'link',
         labelStyle: { fontSize: 9, fill: 'var(--text-secondary)' },
         labelBgStyle: { fill: 'var(--bg-secondary)', fillOpacity: 0.8 },
       }));
@@ -126,7 +133,33 @@ export function KnowledgeMap({ pages, activePageId, onNavigate, onClose }: Knowl
   const layoutNodes = useMemo(() => applyDagreLayout(rawNodes, rawEdges), [rawNodes, rawEdges]);
 
   const [nodes, , onNodesChange] = useNodesState(layoutNodes);
-  const [edges, , onEdgesChange] = useEdgesState(rawEdges);
+  const [edges, setEdges, onEdgesChange] = useEdgesState(rawEdges);
+
+  const onConnect = useCallback(
+    (params: Connection) => {
+      if (params.source && params.target) {
+        addManualLink(params.source, params.target);
+        setEdges((eds) => addEdge({ 
+          ...params, 
+          style: { stroke: 'var(--accent)', strokeWidth: 1.5, strokeDasharray: '3 3' },
+          animated: true,
+          label: 'link'
+        }, eds));
+      }
+    },
+    [setEdges]
+  );
+
+  const onEdgesDelete = useCallback(
+    (edgesToDelete: Edge[]) => {
+      edgesToDelete.forEach((edge) => {
+        if (!edge.id.startsWith('parent-')) {
+          removeManualLink(edge.source, edge.target);
+        }
+      });
+    },
+    []
+  );
 
   const onNodeClick: NodeMouseHandler = useCallback((_e, node) => {
     onNavigate(node.id);
@@ -184,18 +217,21 @@ export function KnowledgeMap({ pages, activePageId, onNavigate, onClose }: Knowl
               페이지가 없습니다.
             </div>
           ) : (
-            <ReactFlow
+              <ReactFlow
               nodes={nodes}
               edges={edges}
               onNodesChange={onNodesChange}
               onEdgesChange={onEdgesChange}
               onNodeClick={onNodeClick}
+              onConnect={onConnect}
+              onEdgesDelete={onEdgesDelete}
               nodeTypes={nodeTypes}
               fitView
               fitViewOptions={{ padding: 0.2 }}
               minZoom={0.3}
               maxZoom={2}
               proOptions={{ hideAttribution: true }}
+              deleteKeyCode={['Backspace', 'Delete']}
             >
               <Background
                 variant={BackgroundVariant.Dots}

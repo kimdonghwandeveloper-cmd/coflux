@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Send, Database, Layout, Globe, Search, Sparkles } from 'lucide-react';
+import { Send, Database, Layout, Globe, Search, Sparkles, FilePlus } from 'lucide-react';
 import { webrtcClient } from '../lib/webrtc_client';
 import { sharedChat, getEncodedYjsUpdateString, applyIncomingYjsUpdate } from '../lib/crdt_store';
 import { routeAiTask } from '../lib/ai_router';
@@ -19,12 +19,14 @@ export const AiChatWidget = ({
   connState, 
   pageTitle, 
   pageId, 
-  workspaceId 
+  workspaceId,
+  onSaveAsPage
 }: { 
   connState: string;
   pageTitle?: string;
   pageId?: string;
   workspaceId?: string;
+  onSaveAsPage?: (title: string, markdown: string) => Promise<void> | void;
 }) => {
   const { t } = useTranslation();
   const [messages, setMessages] = useState<Message[]>(sharedChat.toArray());
@@ -136,6 +138,23 @@ export const AiChatWidget = ({
                boxShadow: '0 2px 4px rgba(0,0,0,0.05)'
             }}>
               {m.text}
+              {m.type === 'ai' && onSaveAsPage && (
+                <div style={{ marginTop: '10px', display: 'flex', justifyContent: 'flex-end' }}>
+                  <button 
+                    onClick={() => {
+                      const titleMatch = m.text.match(/^#+\s+(.*)$/m);
+                      const rawTitle = titleMatch ? titleMatch[1] : m.text.split('\n')[0].substring(0, 30);
+                      const safeTitle = rawTitle.replace(/[*_#]/g, '').trim() || 'New AI Page';
+                      onSaveAsPage(safeTitle, m.text);
+                    }}
+                    style={{
+                      background: 'rgba(255,255,255,0.2)', border: 'none', borderRadius: '4px', padding: '6px 10px', fontSize: '11px', color: 'white', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px', fontWeight: 'bold'
+                    }}>
+                    <FilePlus size={13} color="white" />
+                    Save as Page
+                  </button>
+                </div>
+              )}
               {m.sources && m.sources.length > 0 && (
                 <div style={{ marginTop: '10px', paddingTop: '8px', borderTop: '1px solid rgba(255,255,255,0.2)', fontSize: '11px' }}>
                   <div style={{ fontWeight: 'bold', marginBottom: '4px' }}>Sources:</div>

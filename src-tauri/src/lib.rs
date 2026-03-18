@@ -93,6 +93,8 @@ pub fn run() {
             db_core::delete_workspace,
             db_core::save_asset,
             db_core::get_asset,
+            db_core::coflux_add_manual_link,
+            db_core::coflux_remove_manual_link,
             workflows::get_workflows,
             workflows::save_workflow,
             workflows::delete_workflow,

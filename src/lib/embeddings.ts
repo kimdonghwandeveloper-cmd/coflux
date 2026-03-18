@@ -59,11 +59,29 @@ export async function getOutlinks(pageId: string): Promise<LinkPageInfo[]> {
   }
 }
 
-/** 전체 위키링크 엣지 목록 [source_id, target_id][] (KnowledgeMap용) */
+/** 전체 위키링크 엣지 및 수동 연결 엣지 목록 [source_id, target_id][] (KnowledgeMap용) */
 export async function getAllLinks(): Promise<[string, string][]> {
   try {
     return await invoke<[string, string][]>('coflux_get_all_links');
   } catch {
     return [];
+  }
+}
+
+/** 지식 맵 수동 노드 엣지 추가 */
+export async function addManualLink(sourceId: string, targetId: string): Promise<void> {
+  try {
+    await invoke('coflux_add_manual_link', { sourceId, targetId });
+  } catch (e) {
+    console.warn('[Embeddings] addManualLink 실패:', e);
+  }
+}
+
+/** 지식 맵 수동 노드 엣지 삭제 */
+export async function removeManualLink(sourceId: string, targetId: string): Promise<void> {
+  try {
+    await invoke('coflux_remove_manual_link', { sourceId, targetId });
+  } catch (e) {
+    console.warn('[Embeddings] removeManualLink 실패:', e);
   }
 }

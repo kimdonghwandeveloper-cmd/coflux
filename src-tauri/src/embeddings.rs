@@ -300,7 +300,11 @@ pub fn coflux_get_backlinks(page_id: String) -> Result<Vec<LinkPageInfo>, String
     let conn = guard.as_ref().ok_or("DB not initialized")?;
     let mut stmt = conn
         .prepare(
-            "SELECT p.id, p.title, p.icon FROM page_links l
+            "SELECT p.id, p.title, p.icon FROM (
+                 SELECT source_page_id, target_page_id FROM page_links
+                 UNION
+                 SELECT source_page_id, target_page_id FROM manual_links
+             ) l
              JOIN pages p ON p.id = l.source_page_id
              WHERE l.target_page_id = ?1 AND (p.is_deleted IS NULL OR p.is_deleted = 0)",
         )
@@ -322,7 +326,11 @@ pub fn coflux_get_outlinks(page_id: String) -> Result<Vec<LinkPageInfo>, String>
     let conn = guard.as_ref().ok_or("DB not initialized")?;
     let mut stmt = conn
         .prepare(
-            "SELECT p.id, p.title, p.icon FROM page_links l
+            "SELECT p.id, p.title, p.icon FROM (
+                 SELECT source_page_id, target_page_id FROM page_links
+                 UNION
+                 SELECT source_page_id, target_page_id FROM manual_links
+             ) l
              JOIN pages p ON p.id = l.target_page_id
              WHERE l.source_page_id = ?1 AND (p.is_deleted IS NULL OR p.is_deleted = 0)",
         )
@@ -343,7 +351,11 @@ pub fn coflux_get_all_links() -> Result<Vec<(String, String)>, String> {
     let guard = DB_CONN.lock().map_err(|e| e.to_string())?;
     let conn = guard.as_ref().ok_or("DB not initialized")?;
     let mut stmt = conn
-        .prepare("SELECT source_page_id, target_page_id FROM page_links")
+        .prepare(
+            "SELECT source_page_id, target_page_id FROM page_links 
+             UNION 
+             SELECT source_page_id, target_page_id FROM manual_links"
+        )
         .map_err(|e| e.to_string())?;
     let rows: Vec<(String, String)> = stmt
         .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))
