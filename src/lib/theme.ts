@@ -144,6 +144,26 @@ export const PRESET_THEMES: WorkspaceTheme[] = [
 export const FREE_THEME_IDS = PRESET_THEMES.map(t => t.id);
 export const TOGGLE_THEME_IDS = ['notion-light', 'notion-dark'];
 
+// ─── 유틸리티 ─────────────────────────────────────────────────────────────────
+
+/** E27: 배경색의 명도(Luma)를 계산하여 대비되는 텍스트 색상(검/흰)을 반환 */
+export function getContrastColor(hexColor: string): string {
+  if (!hexColor) return '#37352f';
+  let hex = hexColor.replace('#', '');
+  if (hex.length === 3) {
+    hex = hex.split('').map(c => c + c).join('');
+  }
+  const r = parseInt(hex.substring(0, 2), 16);
+  const g = parseInt(hex.substring(2, 4), 16);
+  const b = parseInt(hex.substring(4, 6), 16);
+  
+  // W3C Luma 공식
+  const luma = 0.299 * r + 0.587 * g + 0.114 * b;
+  
+  // 밝기가 140 이상이면 밝은 배경이므로 어두운 글씨(Black), 아니면 흰 글씨(White)
+  return luma > 140 ? '#1a1a1a' : '#ffffff';
+}
+
 // ─── CSS 변수 적용 ────────────────────────────────────────────────────────────
 
 export function applyTheme(theme: WorkspaceTheme) {

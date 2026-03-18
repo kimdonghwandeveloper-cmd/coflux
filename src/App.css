@@ -250,6 +250,29 @@ html[data-theme='dark'] .react-grid-item {
   --level: 22px !important;
 }
 
+.page-header {
+  padding: 8px 54px;
+}
+
+.page-title {
+  width: 100%;
+  font-size: 40px;
+  font-weight: 700;
+  border: none;
+  background: transparent;
+  color: var(--auto-text-color, var(--text-primary)); /* E27 Dynamic Color */
+  outline: none;
+  padding: 0;
+  letter-spacing: -0.02em;
+  transition: color 0.3s ease;
+}
+
+/* Base BlockNote styling inside our app */
+.bn-container {
+  /* Override default BlockNote text color to match our dynamic contrast theme (E27) */
+  --bn-colors-editor-text: var(--auto-text-color, var(--text-primary)) !important;
+}
+
 [data-prev-type="heading"],
 [data-prev-level="1"] {
   --prev-level: 36px !important;
@@ -287,12 +310,13 @@ html[data-theme='dark'] .react-grid-item {
 .app-container .bn-editor {
   padding-bottom: 40vh !important;
   min-height: 100%;
+  transition: color 0.3s ease;
 }
 
 /* Dark mode: BlockNote's default editor bg (#1F1F1F) is brighter than our page bg.
    Force it to match so the editing area doesn't visually stand out. */
 [data-theme='dark'] .bn-editor {
-  background-color: var(--bg-primary) !important;
+  background-color: transparent !important; /* Let body bg show through */
 }
 
 /* Notion-style text selection highlight */

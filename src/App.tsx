@@ -9,7 +9,7 @@ import { Menu, Search, Users, Bell, Sparkles, Zap, Code2, GitBranch } from 'luci
 import { AiChatWidget } from './components/AiChatWidget';
 import { KnowledgeMap } from './components/KnowledgeMap';
 import { invoke } from '@tauri-apps/api/core';
-import { applyTheme, resolveTheme, WorkspaceTheme, PRESET_THEMES } from './lib/theme';
+import { applyTheme, resolveTheme, WorkspaceTheme, PRESET_THEMES, getContrastColor } from './lib/theme';
 import { supabase, UserProfile } from './lib/supabase';
 import logo from './assets/logo.png';
 
@@ -31,6 +31,8 @@ export interface PageData {
   parentId?: string | null;
   isDeleted?: boolean | null;
   sortOrder?: number | null;
+  titleColor?: string | null;
+  titleBgColor?: string | null;
 }
 
 function App() {
@@ -236,7 +238,7 @@ function App() {
           }}
           onAddPage={async () => {
             const newId = Date.now().toString();
-            const newPage: PageData = { id: newId, title: 'Untitled', icon: '📄', updatedAt: new Date().toLocaleDateString(), coverImage: null, isFavorite: false, workspaceId: activeWorkspaceId, parentId: null, isDeleted: false, sortOrder: pages.length };
+            const newPage: PageData = { id: newId, title: 'Untitled', icon: '📄', updatedAt: new Date().toLocaleDateString(), coverImage: null, isFavorite: false, workspaceId: activeWorkspaceId, parentId: null, isDeleted: false, sortOrder: pages.length, titleColor: null, titleBgColor: null };
             try {
               await invoke('save_page', { page: newPage });
               setPages([...pages, newPage]);
@@ -289,7 +291,7 @@ function App() {
         />
       )}
 
-      <div className="main-content">
+      <div className="main-content" style={{ '--auto-text-color': getContrastColor(activeTheme.colors.bgPrimary) } as any}>
         <div className="top-bar">
           <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
             {!sidebarOpen && (
@@ -377,7 +379,7 @@ function App() {
             childPages={pages.filter(p => p.parentId === activePageId && !p.isDeleted)}
             onAddSubPage={async () => {
               const newId = Date.now().toString();
-              const newPage: PageData = { id: newId, title: 'Untitled', icon: ' ', updatedAt: new Date().toLocaleDateString(), coverImage: null, isFavorite: false, workspaceId: activeWorkspaceId, parentId: activePageId, isDeleted: false };
+              const newPage: PageData = { id: newId, title: 'Untitled', icon: ' ', updatedAt: new Date().toLocaleDateString(), coverImage: null, isFavorite: false, workspaceId: activeWorkspaceId, parentId: activePageId, isDeleted: false, titleColor: null, titleBgColor: null };
               try {
                 await invoke('save_page', { page: newPage });
                 setPages([...pages, newPage]);

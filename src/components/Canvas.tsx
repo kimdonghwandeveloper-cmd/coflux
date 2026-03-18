@@ -9,7 +9,7 @@ import { filterSuggestionItems } from "@blocknote/core/extensions";
 import "@blocknote/mantine/style.css";
 import { PageData } from '../App';
 import { WorkspaceTheme } from '../lib/theme';
-import { Image as ImageIcon, Wifi } from 'lucide-react';
+import { Image as ImageIcon, Wifi, Palette, Check } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { invoke } from '@tauri-apps/api/core';
 import * as Y from 'yjs';
@@ -546,6 +546,24 @@ export const Canvas = ({
   const [showNetwork, setShowNetwork] = useState(false);
   const [remoteSdp, setRemoteSdp] = useState('');
   const [localTitle, setLocalTitle] = useState(activePage.title);
+  
+  // E27: 페이지 제목 색상 지정 Popover
+  const [showTitleConfig, setShowTitleConfig] = useState(false);
+  const [isTitleHovered, setIsTitleHovered] = useState(false);
+
+  // E27: BlockNote 호환 컬러맵 배열
+  const titleColors = [
+    { label: 'Default', value: null },
+    { label: 'Gray', value: 'gray' },
+    { label: 'Brown', value: 'brown' },
+    { label: 'Red', value: 'red' },
+    { label: 'Orange', value: 'orange' },
+    { label: 'Yellow', value: 'yellow' },
+    { label: 'Green', value: 'green' },
+    { label: 'Blue', value: 'blue' },
+    { label: 'Purple', value: 'purple' },
+    { label: 'Pink', value: 'pink' }
+  ];
 
   // Keep local title in sync with prop when page changes
   useEffect(() => {
@@ -788,22 +806,82 @@ export const Canvas = ({
           </div>
         )}
 
-        <input
-          value={localTitle}
-          onChange={e => setLocalTitle(e.target.value)}
-          onBlur={() => {
-            if (localTitle !== activePage.title) {
-              onUpdatePage({...activePage, title: localTitle});
-            }
-          }}
-          onKeyDown={e => {
-            if (e.key === 'Enter') {
-              (e.target as HTMLInputElement).blur();
-            }
-          }}
-          placeholder="Page Title"
-          style={{ fontSize: '40px', fontWeight: 700, margin: '0 0 12px 0', letterSpacing: '-0.02em', outline: 'none', color: 'var(--text-primary)', background: 'transparent', border: 'none', width: '100%', fontFamily: 'inherit' }} 
-        />
+        {/* E27: Title Input & Color Picker */}
+        <div 
+          style={{ position: 'relative', display: 'flex', alignItems: 'center', marginBottom: '12px' }}
+          onMouseEnter={() => setIsTitleHovered(true)}
+          onMouseLeave={() => setIsTitleHovered(false)}
+        >
+          <input
+            value={localTitle}
+            onChange={e => setLocalTitle(e.target.value)}
+            onBlur={() => {
+              if (localTitle !== activePage.title) {
+                onUpdatePage({...activePage, title: localTitle});
+              }
+            }}
+            onKeyDown={e => {
+              if (e.key === 'Enter') {
+                (e.target as HTMLInputElement).blur();
+              }
+            }}
+            placeholder="Page Title"
+            className="page-title"
+            style={{ 
+              fontSize: '40px', fontWeight: 700, letterSpacing: '-0.02em', outline: 'none', 
+              color: activePage.titleColor ? `var(--bn-colors-highlights-${activePage.titleColor}-text, var(--auto-text-color))` : 'var(--auto-text-color, var(--text-primary))', 
+              background: activePage.titleBgColor ? `var(--bn-colors-highlights-${activePage.titleBgColor}-background, transparent)` : 'transparent', 
+              border: 'none', width: '100%', fontFamily: 'inherit',
+              padding: activePage.titleBgColor ? '0 12px' : '0',  // 배경색 있을 땐 패딩 약간 줌
+              borderRadius: '8px', transition: 'all 0.2s ease', marginLeft: activePage.titleBgColor ? '-12px' : '0'
+            }} 
+          />
+          
+          <div 
+            style={{ position: 'absolute', right: 0, opacity: (isTitleHovered || showTitleConfig) ? 1 : 0, transition: 'opacity 0.2s ease', zIndex: 60 }}
+          >
+            <button 
+              className="notion-btn" 
+              style={{ padding: '6px', background: 'transparent', border: 'none', color: 'var(--text-secondary)' }}
+              onClick={() => setShowTitleConfig(!showTitleConfig)}
+            >
+              <Palette size={20} />
+            </button>
+            
+            {showTitleConfig && (
+              <div style={{ position: 'absolute', top: '100%', right: 0, marginTop: '8px', background: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '8px', boxShadow: '0 4px 16px rgba(0,0,0,0.15)', padding: '12px', width: '220px', zIndex: 100, display: 'flex', flexDirection: 'column', gap: '16px', animation: 'slideUpFade 0.15s ease-out forwards' }}>
+                <div>
+                  <div style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', marginBottom: '8px', letterSpacing: '0.5px' }}>Text Color</div>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '6px' }}>
+                    {titleColors.map(c => (
+                      <div key={`t-${c.value}`} 
+                           onClick={() => { onUpdatePage({...activePage, titleColor: c.value }); }}
+                           title={c.label}
+                           style={{ width: '26px', height: '26px', borderRadius: '50%', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid var(--border-color)', background: c.value ? `var(--bn-colors-highlights-${c.value}-text)` : 'var(--auto-text-color)' }}
+                      >
+                        {activePage.titleColor === c.value && <Check size={14} color={c.value ? "white" : "var(--bg-primary)"} />}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <div style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', marginBottom: '8px', letterSpacing: '0.5px' }}>Background Color</div>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '6px' }}>
+                    {titleColors.map(c => (
+                      <div key={`b-${c.value}`} 
+                           onClick={() => { onUpdatePage({...activePage, titleBgColor: c.value }); }}
+                           title={c.label}
+                           style={{ width: '26px', height: '26px', borderRadius: '4px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid var(--border-color)', background: c.value ? `var(--bn-colors-highlights-${c.value}-background)` : 'transparent' }}
+                      >
+                        {activePage.titleBgColor === c.value && <Check size={14} color="var(--text-primary)" />}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
         
         <div style={{ fontSize: '13px', color: 'var(--text-secondary)', marginBottom: '32px', display: 'flex', alignItems: 'center', gap: '12px' }}>
           <span>Updated {activePage.updatedAt}</span>
