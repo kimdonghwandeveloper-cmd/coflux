@@ -246,9 +246,12 @@ export const SettingsModal = ({
 
   // HSL 조절 헬퍼
   const updateHsl = (key: keyof ThemeColors, { h, s, l }: { h?: number; s?: number; l?: number }) => {
+    // visualPositions에 저장된 '시각적 Hue'를 우선 참조 (무채색 시 Hue 소실 방지)
+    const visualH = visualPositions[key as keyof typeof visualPositions]?.x ? (visualPositions[key as keyof typeof visualPositions].x * 3.6) : hexToHsl(editColors[key]).h;
     const currentHsl = hexToHsl(editColors[key]);
+    
     const nextHex = hslToHex(
-      h ?? currentHsl.h,
+      h ?? visualH,
       s ?? currentHsl.s,
       l ?? currentHsl.l
     );
