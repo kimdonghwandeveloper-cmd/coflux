@@ -59,18 +59,22 @@ serve(async (req) => {
         }
         break;
       }
+      case "customer.subscription.updated":
       case "customer.subscription.deleted": {
         const subscription = event.data.object;
         const customerId = subscription.customer;
+        const status = subscription.status;
 
-        // 구독 해지 시 티어를 'free'로 변경
+        // 구독 상태가 active가 아니면(canceled, trialing_expired 등) free로 변경
+        const newTier = status === "active" ? "pro" : "free";
+
         const { error } = await supabaseClient
           .from("users")
-          .update({ tier: "free" })
+          .update({ tier: newTier })
           .eq("stripe_customer_id", customerId);
 
-        if (error) console.error("Error downgrading user tier:", error);
-        else console.log(`Customer ${customerId} downgraded to free`);
+        if (error) console.error("Error updating user tier on change:", error);
+        else console.log(`Customer ${customerId} tier updated to ${newTier}`);
         break;
       }
     }
