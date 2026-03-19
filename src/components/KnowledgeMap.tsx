@@ -18,8 +18,8 @@ import {
 import '@xyflow/react/dist/style.css';
 import dagre from '@dagrejs/dagre';
 import { PageData } from '../App';
-import { getAllLinks, addManualLink, removeManualLink, getAllPageEmbeddings, PageEmbedding } from '../lib/embeddings';
-import { Brain, Network, X } from 'lucide-react';
+import { getAllLinks, addManualLink, removeManualLink, getAllPageEmbeddings, PageEmbedding, getKnowledgeActivity, PageActivity } from '../lib/embeddings';
+import { Brain, Network, Flame, X } from 'lucide-react';
 
 // ─── Dagre 자동 레이아웃 ─────────────────────────────────────────────────────
 
@@ -43,13 +43,17 @@ function applyDagreLayout(nodes: Node[], edges: Edge[]): Node[] {
 
 // ─── 커스텀 노드 ──────────────────────────────────────────────────────────────
 
-function PageNode({ data }: { data: { icon: string; title: string; isActive: boolean } }) {
+function PageNode({ data }: { data: { icon: string; title: string; isActive: boolean; activityScore?: number; isHeatmap?: boolean } }) {
+  const heatColor = data.isHeatmap && data.activityScore !== undefined 
+    ? `rgba(255, ${150 - data.activityScore * 100}, 0, ${0.1 + data.activityScore * 0.9})` 
+    : 'var(--accent)';
+
   return (
     <div style={{
       padding: '8px 14px',
       borderRadius: '8px',
       background: data.isActive ? 'var(--accent)' : 'var(--bg-surface)',
-      border: `1.5px solid ${data.isActive ? 'var(--accent)' : 'var(--border-color)'}`,
+      border: `1.5px solid ${data.isHeatmap ? heatColor : (data.isActive ? 'var(--accent)' : 'var(--border-color)')}`,
       color: data.isActive ? 'var(--bg-primary)' : 'var(--text-primary)',
       fontSize: '13px',
       fontWeight: data.isActive ? 600 : 400,
@@ -57,9 +61,9 @@ function PageNode({ data }: { data: { icon: string; title: string; isActive: boo
       alignItems: 'center',
       gap: '7px',
       minWidth: `${NODE_W}px`,
-      boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
+      boxShadow: data.isHeatmap && data.activityScore ? `0 0 ${10 + data.activityScore * 15}px ${heatColor}` : '0 2px 8px rgba(0,0,0,0.08)',
       cursor: 'pointer',
-      transition: 'box-shadow 0.15s',
+      transition: 'all 0.3s ease',
       whiteSpace: 'nowrap',
       overflow: 'hidden',
       textOverflow: 'ellipsis',
@@ -168,6 +172,8 @@ export function KnowledgeMap({ pages, activePageId, onNavigate, onClose }: Knowl
   const [wikiLinks, setWikiLinks] = useState<[string, string][]>([]);
   const [isSemantic, setIsSemantic] = useState(false);
   const [embeddings, setEmbeddings] = useState<PageEmbedding[]>([]);
+  const [isHeatmap, setIsHeatmap] = useState(false);
+  const [activityScores, setActivityScores] = useState<PageActivity[]>([]);
 
   useEffect(() => {
     getAllLinks().then(setWikiLinks).catch(() => {});
@@ -179,14 +185,27 @@ export function KnowledgeMap({ pages, activePageId, onNavigate, onClose }: Knowl
     }
   }, [isSemantic, embeddings.length]);
 
-  const rawNodes: Node[] = useMemo(() =>
-    visible.map(p => ({
+  useEffect(() => {
+    if (isHeatmap) {
+      getKnowledgeActivity().then(setActivityScores).catch(() => {});
+    }
+  }, [isHeatmap]);
+
+  const rawNodes: Node[] = useMemo(() => {
+    const scoresMap = new Map(activityScores.map(s => [s.page_id, s.score]));
+    return visible.map(p => ({
       id: p.id,
       type: 'pageNode',
       position: { x: 0, y: 0 },
-      data: { icon: p.icon, title: p.title || 'Untitled', isActive: p.id === activePageId },
-    })),
-  [visible, activePageId]);
+      data: { 
+        icon: p.icon, 
+        title: p.title || 'Untitled', 
+        isActive: p.id === activePageId,
+        activityScore: scoresMap.get(p.id) || 0,
+        isHeatmap
+      },
+    }));
+  }, [visible, activePageId, activityScores, isHeatmap]);
 
   const visibleIds = useMemo(() => new Set(visible.map(p => p.id)), [visible]);
 
@@ -329,6 +348,28 @@ export function KnowledgeMap({ pages, activePageId, onNavigate, onClose }: Knowl
             >
               {isSemantic ? <Brain size={12} /> : <Network size={12} />}
               {isSemantic ? 'Semantic View' : 'Structure View'}
+            </div>
+            
+            <div 
+              onClick={() => setIsHeatmap(!isHeatmap)}
+              style={{
+                marginLeft: '8px',
+                padding: '4px 10px',
+                borderRadius: '20px',
+                background: isHeatmap ? '#ff4000' : 'var(--bg-secondary)',
+                color: isHeatmap ? 'white' : 'var(--text-secondary)',
+                fontSize: '11px',
+                fontWeight: 600,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '5px',
+                transition: 'all 0.2s',
+                boxShadow: isHeatmap ? '0 0 10px rgba(255, 64, 0, 0.4)' : 'none'
+              }}
+            >
+              <Flame size={12} fill={isHeatmap ? 'currentColor' : 'none'} />
+              Heatmap
             </div>
             <span style={{ fontSize: '12px', color: 'var(--text-secondary)', marginLeft: '4px' }}>
               {visible.length}개 페이지
