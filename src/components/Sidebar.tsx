@@ -237,7 +237,7 @@ export const Sidebar = ({
         <div>
           <div style={{ padding: '0 16px 8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <div style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>{t('private')}</div>
-            <div onClick={onAddPage} style={{ cursor: 'pointer', padding: '2px', display: 'flex' }}>
+            <div onClick={() => onAddPage()} style={{ cursor: 'pointer', padding: '2px', display: 'flex' }}>
               <Plus size={16} color="var(--text-secondary)" />
             </div>
           </div>
