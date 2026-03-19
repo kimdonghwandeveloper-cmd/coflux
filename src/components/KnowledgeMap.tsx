@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState, useRef } from 'react';
 import {
   ReactFlow,
   Node,
@@ -168,7 +168,7 @@ function applySemanticLayout(nodes: Node[], embeddings: PageEmbedding[]): Node[]
 }
 
 export function KnowledgeMap({ pages, activePageId, onNavigate, onClose }: KnowledgeMapProps) {
-  const visible = pages.filter(p => !p.isDeleted);
+  const visible = useMemo(() => pages.filter(p => !p.isDeleted), [pages]);
   const [wikiLinks, setWikiLinks] = useState<[string, string][]>([]);
   const [isSemantic, setIsSemantic] = useState(false);
   const [embeddings, setEmbeddings] = useState<PageEmbedding[]>([]);
@@ -247,8 +247,13 @@ export function KnowledgeMap({ pages, activePageId, onNavigate, onClose }: Knowl
   const [edges, setEdges, onEdgesChange] = useEdgesState(rawEdges);
 
   // 레이아웃 변경 시 노드 위치만 업데이트 (애니메이션 효과)
+  // 초기 로드 시 및 모드 전환 시에만 실행되도록 함
+  const lastLayoutRef = useRef<Node[]>([]);
   useEffect(() => {
-    setNodes(layoutNodes);
+    if (layoutNodes !== lastLayoutRef.current) {
+      setNodes(layoutNodes);
+      lastLayoutRef.current = layoutNodes;
+    }
   }, [layoutNodes, setNodes]);
 
   useEffect(() => {
