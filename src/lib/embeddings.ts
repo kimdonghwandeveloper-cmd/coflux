@@ -115,22 +115,38 @@ export async function addManualLink(sourceId: string, targetId: string): Promise
     console.warn('[Embeddings] addManualLink 실패:', e);
   }
 }
- 
- /** 지식 맵 수동 노드 엣지 삭제 */
- export async function removeManualLink(sourceId: string, targetId: string): Promise<void> {
-   try {
-     await invoke('coflux_remove_manual_link', { sourceId, targetId });
-   } catch (e) {
-     console.warn('[Embeddings] removeManualLink 실패:', e);
-   }
- }
- 
- /** 현재 텍스트와 연관된 페이지들을 찾아 반환합니다. (페이지 단위) */
- export async function findRelatedPages(text: string, currentPageId?: string, limit = 3): Promise<RelatedPage[]> {
-   try {
-     return await invoke<RelatedPage[]>('coflux_find_related_pages', { text, currentPageId, limit });
-   } catch (e) {
-     console.warn('[Embeddings] findRelatedPages 실패:', e);
-     return [];
-   }
- }
+
+/** 지식 맵 수동 노드 엣지 삭제 */
+export async function removeManualLink(sourceId: string, targetId: string): Promise<void> {
+  try {
+    await invoke('coflux_remove_manual_link', { sourceId, targetId });
+  } catch (e) {
+    console.warn('[Embeddings] removeManualLink 실패:', e);
+  }
+}
+
+/** 현재 텍스트와 연관된 페이지들을 찾아 반환합니다. (페이지 단위) */
+export async function findRelatedPages(text: string, currentPageId?: string, limit = 3): Promise<RelatedPage[]> {
+  try {
+    return await invoke<RelatedPage[]>('coflux_find_related_pages', { text, currentPageId, limit });
+  } catch (e) {
+    console.warn('[Embeddings] findRelatedPages 실패:', e);
+    return [];
+  }
+}
+
+export interface PageEmbedding {
+  page_id: string;
+  title: string;
+  embedding: number[];
+}
+
+/** 모든 페이지의 평균 임베딩 벡터를 가져옵니다. (시맨틱 맵용) */
+export async function getAllPageEmbeddings(): Promise<PageEmbedding[]> {
+  try {
+    return await invoke<PageEmbedding[]>('coflux_get_all_page_embeddings');
+  } catch (e) {
+    console.warn('[Embeddings] getAllPageEmbeddings 실패:', e);
+    return [];
+  }
+}

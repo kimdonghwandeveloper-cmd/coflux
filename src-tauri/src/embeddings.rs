@@ -505,3 +505,70 @@ pub fn coflux_get_all_links() -> Result<Vec<(String, String)>, String> {
         .collect();
     Ok(rows)
 }
+
+/// 모든 페이지의 임베딩을 가져와 페이지 단위로 평균(Mean Pooling)하여 반환합니다.
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct PageEmbedding {
+    pub page_id: String,
+    pub title: String,
+    pub embedding: Vec<f32>,
+}
+
+#[tauri::command]
+pub async fn coflux_get_all_page_embeddings() -> Result<Vec<PageEmbedding>, String> {
+    let guard = DB_CONN.lock().map_err(|e| e.to_string())?;
+    let conn = guard.as_ref().ok_or("DB not initialized")?;
+
+    // 1. 모든 페이지와 그 타이틀 가져오기
+    let mut stmt = conn.prepare("SELECT id, title FROM pages WHERE (is_deleted IS NULL OR is_deleted = 0)")
+        .map_err(|e| e.to_string())?;
+    let pages: Vec<(String, String)> = stmt.query_map([], |row| Ok((row.get(0)?, row.get(1)?)))
+        .map_err(|e| e.to_string())?
+        .filter_map(|r| r.ok())
+        .collect();
+
+    let mut results = Vec::new();
+
+    for (page_id, title) in pages {
+        // 2. 해당 페이지의 모든 청크 임베딩 가져오기
+        let mut estmt = conn.prepare("SELECT embedding FROM page_embeddings WHERE page_id = ?1")
+            .map_err(|e| e.to_string())?;
+        let blobs: Vec<Vec<u8>> = estmt.query_map(params![page_id], |row| row.get(0))
+            .map_err(|e| e.to_string())?
+            .filter_map(|r| r.ok())
+            .collect();
+
+        if blobs.is_empty() {
+            continue;
+        }
+
+        // 3. 임베딩 평균 계산
+        let mut sum_vec: Vec<f32> = Vec::new();
+        let mut count = 0;
+
+        for blob in blobs {
+            let emb = blob_to_embedding(&blob);
+            if sum_vec.is_empty() {
+                sum_vec = emb;
+            } else {
+                for (s, v) in sum_vec.iter_mut().zip(emb.iter()) {
+                    *s += v;
+                }
+            }
+            count += 1;
+        }
+
+        if count > 0 {
+            for s in sum_vec.iter_mut() {
+                *s /= count as f32;
+            }
+            results.push(PageEmbedding {
+                page_id,
+                title,
+                embedding: sum_vec,
+            });
+        }
+    }
+
+    Ok(results)
+}

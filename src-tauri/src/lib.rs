@@ -121,6 +121,7 @@ pub fn run() {
             embeddings::coflux_update_block_embedding,
             embeddings::coflux_delete_block_embeddings,
             embeddings::coflux_update_wiki_links,
+            embeddings::coflux_get_all_page_embeddings,
             embeddings::coflux_search_similar,
             embeddings::coflux_find_related_pages,
             embeddings::coflux_get_index_count,
