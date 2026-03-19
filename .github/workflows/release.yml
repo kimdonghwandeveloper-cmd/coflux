@@ -41,6 +41,8 @@ jobs:
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VITE_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
         with:
           tagName: ${{ github.ref_name }} # the action automatically replaces \`v\` with nothing if you want
           releaseName: 'Coflux ${{ github.ref_name }}'
