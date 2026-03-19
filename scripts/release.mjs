@@ -43,9 +43,18 @@ try {
   console.warn(`⚠️ Could not update tauri.conf.json: ${e.message}`);
 }
 
+// 6. Force update Cargo.lock to match the new version in Cargo.toml
+try {
+  console.log('🔄 Syncing Cargo.lock...');
+  execSync(`cargo metadata --manifest-path ${cargoPath} --format-version 1`, { stdio: 'ignore' });
+  console.log(`✅ Synced Cargo.lock to ${nextVersion}`);
+} catch (e) {
+  console.warn(`⚠️ Could not sync Cargo.lock: ${e.message}`);
+}
+
 const tagName = `v${nextVersion}`;
 
-// 6. Git Operations
+// 7. Git Operations
 try {
   // Get current branch name dynamically
   const currentBranch = execSync('git rev-parse --abbrev-ref HEAD').toString().trim();
