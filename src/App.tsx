@@ -15,6 +15,7 @@ import { supabase, UserProfile } from './lib/supabase';
 import './lib/i18n'; // E28: i18n 초기화
 import logo from './assets/logo.png';
 import { useTranslation } from 'react-i18next'; // E28: useTranslation 훅 추가
+import { getKnowledgeActivity, PageActivity } from './lib/embeddings';
 
 export interface WorkspaceData {
   id: string;
@@ -63,6 +64,17 @@ function App() {
   const [pages, setPages] = useState<PageData[]>([]);
   const [activePageId, setActivePageId] = useState<string | null>(null);
   const [memberCount, setMemberCount] = useState(1);
+
+  // Stage 2: 지식 맵 상태 (글로벌 유지)
+  const [isHeatmap, setIsHeatmap] = useState(false);
+  const [isSemantic, setIsSemantic] = useState(false);
+  const [activityScores, setActivityScores] = useState<PageActivity[]>([]);
+
+  useEffect(() => {
+    if (isHeatmap) {
+      getKnowledgeActivity().then(setActivityScores).catch(() => {});
+    }
+  }, [isHeatmap]);
 
   const [searchQuery, setSearchQuery] = useState('');
   const [searchFocused, setSearchFocused] = useState(false);
@@ -375,6 +387,8 @@ function App() {
               try { await invoke('save_page', { page: p }); } catch (e) { console.error(e); }
             }
           }}
+          isHeatmap={isHeatmap}
+          activityScores={activityScores}
         />
       )}
 
@@ -503,6 +517,11 @@ function App() {
           activePageId={activePageId || ''}
           onNavigate={(id) => { setActivePageId(id); }}
           onClose={() => setKnowledgeMapOpen(false)}
+          isHeatmap={isHeatmap}
+          setIsHeatmap={setIsHeatmap}
+          isSemantic={isSemantic}
+          setIsSemantic={setIsSemantic}
+          activityScores={activityScores}
         />
       )}
 

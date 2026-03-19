@@ -7,15 +7,19 @@ import { SortableContext, sortableKeyboardCoordinates, verticalListSortingStrate
 import { CSS } from '@dnd-kit/utilities';
 import { useTranslation } from 'react-i18next';
 import logo from '../assets/logo.png';
+import { PageActivity } from '../lib/embeddings';
 
 // Sortable page item wrapper
-const SortablePageItem = ({ page, depth, activePageId, setActivePageId, openMenuId, setOpenMenuId, onUpdatePage, onDeletePage, menuRef, hasChildren, expandedIds, toggleExpand, getChildren, renderPageItem }: any) => {
+const SortablePageItem = ({ page, depth, activePageId, setActivePageId, openMenuId, setOpenMenuId, onUpdatePage, onDeletePage, menuRef, hasChildren, expandedIds, toggleExpand, getChildren, renderPageItem, isHeatmap, activityScores }: any) => {
   const { t } = useTranslation();
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: page.id });
   const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.5 : 1, };
 
   const children = getChildren(page.id);
   const isExpanded = expandedIds.has(page.id);
+
+  const score = isHeatmap ? activityScores?.find((s: PageActivity) => s.page_id === page.id)?.score || 0 : 0;
+  const heatColor = isHeatmap && score > 0 ? `rgba(255, ${150 - score * 100}, 0, ${0.4 + score * 0.6})` : 'transparent';
 
   return (
     <div ref={setNodeRef} style={style}>
@@ -36,7 +40,21 @@ const SortablePageItem = ({ page, depth, activePageId, setActivePageId, openMenu
             <div style={{ width: '18px' }} />
           )}
           <span style={{ fontSize: '16px' }}>{page.icon}</span>
-          <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{page.title}</span>
+          <span style={{ 
+            whiteSpace: 'nowrap', 
+            overflow: 'hidden', 
+            textOverflow: 'ellipsis',
+            color: isHeatmap && score > 0.5 ? 'var(--text-primary)' : 'inherit',
+            fontWeight: isHeatmap && score > 0.7 ? 600 : 'inherit'
+          }}>{page.title}</span>
+          {isHeatmap && score > 0 && (
+            <div style={{
+              width: '6px', height: '6px', borderRadius: '50%',
+              background: heatColor,
+              boxShadow: score > 0.6 ? `0 0 8px ${heatColor}` : 'none',
+              marginLeft: '4px'
+            }} />
+          )}
         </div>
         
         <div className="sidebar-item-actions"
@@ -86,7 +104,9 @@ export const Sidebar = ({
   onRestorePage,
   onPermanentlyDeletePage,
   onOpenSettings,
-  onReorderPages
+  onReorderPages,
+  isHeatmap,
+  activityScores
 }: { 
   theme: string,
   toggleTheme: () => void,
@@ -99,13 +119,15 @@ export const Sidebar = ({
   activeWorkspaceId: string,
   onSwitchWorkspace: (id: string) => void,
   onAddWorkspace: (name: string) => void,
-  onAddPage: () => void,
+  onAddPage: (parentId?: string) => void,
   onUpdatePage: (p: PageData) => void,
   onDeletePage: (id: string) => void,
   onRestorePage: (id: string) => void,
   onPermanentlyDeletePage: (id: string) => void,
   onOpenSettings: () => void,
-  onReorderPages: (ids: string[]) => void
+  onReorderPages: (ids: string[]) => void,
+  isHeatmap?: boolean,
+  activityScores?: PageActivity[]
 }) => {
   const { t } = useTranslation();
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
@@ -181,6 +203,8 @@ export const Sidebar = ({
       toggleExpand={toggleExpand}
       getChildren={getChildren}
       renderPageItem={renderPageItem}
+      isHeatmap={isHeatmap}
+      activityScores={activityScores}
     />
   );
 

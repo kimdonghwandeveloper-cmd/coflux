@@ -18,7 +18,7 @@ import {
 import '@xyflow/react/dist/style.css';
 import dagre from '@dagrejs/dagre';
 import { PageData } from '../App';
-import { getAllLinks, addManualLink, removeManualLink, getAllPageEmbeddings, PageEmbedding, getKnowledgeActivity, PageActivity } from '../lib/embeddings';
+import { getAllLinks, addManualLink, removeManualLink, getAllPageEmbeddings, PageEmbedding, PageActivity } from '../lib/embeddings';
 import { Brain, Network, Flame, X } from 'lucide-react';
 
 // ─── Dagre 자동 레이아웃 ─────────────────────────────────────────────────────
@@ -84,8 +84,13 @@ const nodeTypes = { pageNode: PageNode };
 interface KnowledgeMapProps {
   pages: PageData[];
   activePageId: string;
-  onNavigate: (id: string) => void;
+  onNavigate: (pageId: string) => void;
   onClose: () => void;
+  isHeatmap: boolean;
+  setIsHeatmap: (v: boolean) => void;
+  isSemantic: boolean;
+  setIsSemantic: (v: boolean) => void;
+  activityScores: PageActivity[];
 }
 
 // ─── Semantic Clustering (Simple MDS-like Force Layout) ───────────────────────
@@ -167,13 +172,20 @@ function applySemanticLayout(nodes: Node[], embeddings: PageEmbedding[]): Node[]
   }));
 }
 
-export function KnowledgeMap({ pages, activePageId, onNavigate, onClose }: KnowledgeMapProps) {
+export function KnowledgeMap({ 
+  pages, 
+  activePageId, 
+  onNavigate, 
+  onClose,
+  isHeatmap,
+  setIsHeatmap,
+  isSemantic,
+  setIsSemantic,
+  activityScores
+}: KnowledgeMapProps) {
   const visible = useMemo(() => pages.filter(p => !p.isDeleted), [pages]);
   const [wikiLinks, setWikiLinks] = useState<[string, string][]>([]);
-  const [isSemantic, setIsSemantic] = useState(false);
   const [embeddings, setEmbeddings] = useState<PageEmbedding[]>([]);
-  const [isHeatmap, setIsHeatmap] = useState(false);
-  const [activityScores, setActivityScores] = useState<PageActivity[]>([]);
 
   useEffect(() => {
     getAllLinks().then(setWikiLinks).catch(() => {});
@@ -184,12 +196,6 @@ export function KnowledgeMap({ pages, activePageId, onNavigate, onClose }: Knowl
       getAllPageEmbeddings().then(setEmbeddings).catch(() => {});
     }
   }, [isSemantic, embeddings.length]);
-
-  useEffect(() => {
-    if (isHeatmap) {
-      getKnowledgeActivity().then(setActivityScores).catch(() => {});
-    }
-  }, [isHeatmap]);
 
   const rawNodes: Node[] = useMemo(() => {
     const scoresMap = new Map(activityScores.map(s => [s.page_id, s.score]));
@@ -340,7 +346,7 @@ export function KnowledgeMap({ pages, activePageId, onNavigate, onClose }: Knowl
                 marginLeft: '12px',
                 padding: '4px 10px',
                 borderRadius: '20px',
-                background: isSemantic ? 'var(--accent)' : 'var(--bg-secondary)',
+                background: isSemantic ? 'var(--accent)' : 'var(--bg-primary)',
                 color: isSemantic ? 'var(--bg-primary)' : 'var(--text-secondary)',
                 fontSize: '11px',
                 fontWeight: 600,
