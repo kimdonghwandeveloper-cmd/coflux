@@ -37,59 +37,87 @@ pub async fn coflux_rag_query(
     scope: String, // "current", "workspace", "all"
     include_web: Option<bool>,
 ) -> Result<RagResponse, String> {
-    // 1. 로컬 임베딩 검색
-    let mut results = search_scoped(&app, &query, workspace_id, page_id, scope, 5).await?;
+    // 1. 컨텍스트 수집 (로컬 & 웹)
+    let mut results = Vec::new();
+    let mut local_context = String::new();
+
+    if scope == "current" && page_id.is_some() {
+        // 'current' Scope인 경우 해당 페이지의 전체 내용을 가져옵니다.
+        let pid = page_id.as_ref().unwrap();
+        let guard = DB_CONN.lock().map_err(|e| e.to_string())?;
+        let conn = guard.as_ref().ok_or("DB not initialized")?;
+        
+        let (title, content): (String, String) = conn.query_row(
+            "SELECT title, content FROM pages WHERE id = ?1",
+            rusqlite::params![pid],
+            |row| Ok((row.get(0)?, row.get(1)?))
+        ).map_err(|_| "현재 페이지 정보를 가져올 수 없습니다.".to_string())?;
+
+        local_context.push_str(&format!("--- 현재 페이지 전체 내용 (제목: {}) ---\n{}\n\n", title, content));
+        
+        // 검색 결과 리렉토리에도 추가 (UI 소스 표시용)
+        results.push(RagSource {
+            page_id: Some(pid.clone()),
+            title,
+            chunk_text: content.chars().take(200).collect::<String>() + "...",
+            score: 1.0,
+            url: None,
+        });
+    } else {
+        // 그 외 Scope은 기존 벡테 검색(Chunks) 방식 사용
+        results = search_scoped(&app, &query, workspace_id, page_id, scope, 5).await?;
+        for (i, src) in results.iter().enumerate() {
+            if src.page_id.is_some() {
+                local_context.push_str(&format!("--- 로컬 문서 {} (제목: {}) ---\n{}\n\n", i + 1, src.title, src.chunk_text));
+            }
+        }
+    }
     
     // 2. 웹 검색 (선택 사항)
     let mut web_context = String::new();
     if include_web.unwrap_or(false) {
         if let Ok(web_results) = crate::web_search::coflux_web_search(app.clone(), query.clone(), Some(3)).await {
-            let mut i = 0;
-            for res in web_results {
+            for (i, res) in web_results.into_iter().enumerate() {
                 results.push(RagSource {
                     page_id: None,
                     title: res.title.clone(),
                     chunk_text: res.snippet.clone(),
                     score: 0.8,
-                    url: Some(res.url),
+                    url: Some(res.url.clone()),
                 });
                 web_context.push_str(&format!("--- 웹 검색 결과 {} (제목: {}) ---\n{}\n\n", i + 1, res.title, res.snippet));
-                i += 1;
             }
         }
     }
 
-    if results.is_empty() {
+    if local_context.is_empty() && web_context.is_empty() {
         return Ok(RagResponse {
             answer: "관련된 내용을 찾을 수 없습니다.".to_string(),
             sources: vec![],
         });
     }
 
-    // 3. 통합 컨텍스트 구성
-    let mut local_context = String::new();
-    let local_results: Vec<_> = results.iter().filter(|r| r.page_id.is_some()).collect();
-    for (i, src) in local_results.iter().enumerate() {
-        local_context.push_str(&format!("--- 로컬 문서 {} (제목: {}) ---\n{}\n\n", i + 1, src.title, src.chunk_text));
-    }
-
+    // 3. 통합 프롬프트 구성
     let prompt = format!(
-        "[시스템]\n\
-        당신은 CoFlux 워크스페이스 AI 어시스턴트입니다.\n\
-        아래 제공된 [로컬 문서 컨텍스트]와 [웹 검색 컨텍스트]를 바탕으로 사용자의 질문에 답변하세요.\n\
-        로컬 문서를 우선적으로 참고하고, 웹 검색 결과는 최신 정보나 보조 자료로 활용하세요.\n\
-        컨텍스트에 없는 내용이면 솔직히 모른다고 하세요.\n\n\
-        [로컬 문서 컨텍스트]\n\
+        "[로컬 문서 컨텍스트]\n\
         {}\n\
         [웹 검색 컨텍스트]\n\
-        {}\n\
+        {}\n\n\
         [질문]\n\
         {}",
         local_context, web_context, query
     );
 
-    // 4. LLM 호출
-    let answer = crate::api_keys::coflux_external_api_call(app, "openai".to_string(), prompt).await?;
+    // 4. LLM 호출 (기본 공급자는 openai로 시도하되 설정을 따름)
+    let provider = if crate::api_keys::coflux_has_api_key("openai".to_string()).unwrap_or(false) {
+        "openai"
+    } else if crate::api_keys::coflux_has_api_key("anthropic".to_string()).unwrap_or(false) {
+        "anthropic"
+    } else {
+        "google"
+    };
+
+    let answer = crate::api_keys::coflux_external_api_call(app, provider.to_string(), prompt).await?;
 
     Ok(RagResponse {
         answer,

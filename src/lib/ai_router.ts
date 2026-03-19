@@ -3,7 +3,7 @@ import { z } from 'zod';
 
 // ─── BYOK API 키 관리 ────────────────────────────────────────────────────────
 
-export type Provider = 'openai' | 'anthropic';
+export type Provider = 'openai' | 'anthropic' | 'google';
 
 export async function registerApiKey(provider: Provider, apiKey: string): Promise<void> {
   await invoke('coflux_register_api_key', { provider, apiKey });
@@ -73,8 +73,8 @@ export const routeAiTask = async (payload: AiPayload): Promise<AiResponse> => {
   const validData = AiPayloadSchema.parse(payload);
 
   if (validData.externalAllowed) {
-    // openai 우선, 없으면 anthropic 시도
-    for (const provider of ['openai', 'anthropic'] as Provider[]) {
+    // openai 우선, 없으면 anthropic, 그 다음 google 시도
+    for (const provider of ['openai', 'anthropic', 'google'] as Provider[]) {
       if (await hasApiKey(provider)) {
         try {
           const text = await externalApiCall(provider, validData.prompt);

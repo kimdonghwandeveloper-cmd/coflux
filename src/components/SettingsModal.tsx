@@ -63,20 +63,32 @@ function hslToHex(h: number, s: number, l: number) {
 const PROVIDERS = [
   { id: 'openai', label: 'OpenAI', placeholder: 'sk-...' },
   { id: 'anthropic', label: 'Anthropic', placeholder: 'sk-ant-...' },
+  { id: 'google', label: 'Google Gemini', placeholder: 'API Key' },
   { id: 'brave_search', label: 'Brave Search', placeholder: 'Brave API Key' },
 ] as const;
 type ProviderId = (typeof PROVIDERS)[number]['id'];
 
+const MODELS: Record<string, string[]> = {
+  openai: ['gpt-4o', 'gpt-4o-mini', 'gpt-3.5-turbo'],
+  anthropic: ['claude-3-5-sonnet-20240620', 'claude-3-opus-20240229', 'claude-3-haiku-20240307'],
+  google: ['gemini-1.5-pro', 'gemini-1.5-flash'],
+  brave_search: [],
+};
+
 function ApiKeyRow({ provider, label, placeholder }: { provider: ProviderId; label: string; placeholder: string }) {
   const [registered, setRegistered] = useState(false);
+  const [preferredModel, setPreferredModel] = useState<string | null>(null);
   const [input, setInput] = useState('');
   const [showKey, setShowKey] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    invoke<boolean>('coflux_has_api_key', { provider })
-      .then(setRegistered)
+    invoke<any>('coflux_get_provider_config', { provider })
+      .then(config => {
+        setRegistered(config.registered);
+        setPreferredModel(config.preferred_model);
+      })
       .catch(() => {});
   }, [provider]);
 
@@ -85,8 +97,10 @@ function ApiKeyRow({ provider, label, placeholder }: { provider: ProviderId; lab
     setSaving(true);
     setError(null);
     try {
-      await invoke('coflux_register_api_key', { provider, apiKey: input.trim() });
+      const defaultModel = MODELS[provider]?.[0] || null;
+      await invoke('coflux_register_api_key', { provider, apiKey: input.trim(), preferredModel: defaultModel });
       setRegistered(true);
+      setPreferredModel(defaultModel);
       setInput('');
     } catch (e) {
       setError(String(e));
@@ -100,22 +114,51 @@ function ApiKeyRow({ provider, label, placeholder }: { provider: ProviderId; lab
     try {
       await invoke('coflux_delete_api_key', { provider });
       setRegistered(false);
+      setPreferredModel(null);
+    } catch (e) {
+      setError(String(e));
+    }
+  };
+
+  const updateModel = async (model: string) => {
+    try {
+      await invoke('coflux_set_preferred_model', { provider, model });
+      setPreferredModel(model);
     } catch (e) {
       setError(String(e));
     }
   };
 
   return (
-    <div style={{ padding: '10px 0', borderBottom: '1px solid var(--border-color)' }}>
+    <div style={{ padding: '12px 0', borderBottom: '1px solid var(--border-color)' }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
           <Key size={13} color="var(--text-secondary)" />
           <span style={{ fontSize: '14px', fontWeight: 500 }}>{label}</span>
         </div>
         {registered && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-            <Check size={13} color="#22c55e" />
-            <span style={{ fontSize: '12px', color: '#22c55e' }}>등록됨</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            {MODELS[provider].length > 0 && (
+              <select 
+                value={preferredModel || ''} 
+                onChange={(e) => updateModel(e.target.value)}
+                style={{
+                  fontSize: '11px',
+                  padding: '2px 4px',
+                  borderRadius: '4px',
+                  background: 'var(--bg-primary)',
+                  border: '1px solid var(--border-color)',
+                  color: 'var(--text-primary)',
+                  outline: 'none'
+                }}
+              >
+                {MODELS[provider].map(m => <option key={m} value={m}>{m}</option>)}
+              </select>
+            )}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+              <Check size={13} color="#22c55e" />
+              <span style={{ fontSize: '12px', color: '#22c55e' }}>등록됨</span>
+            </div>
             <div
               onClick={remove}
               style={{ cursor: 'pointer', padding: '2px 6px', borderRadius: '4px', background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', display: 'flex', alignItems: 'center', gap: '4px' }}

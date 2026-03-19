@@ -110,6 +110,8 @@ pub fn run() {
             script_storage::script_storage_set,
             script_storage::script_storage_delete,
             api_keys::coflux_register_api_key,
+            api_keys::coflux_set_preferred_model,
+            api_keys::coflux_get_provider_config,
             api_keys::coflux_has_api_key,
             api_keys::coflux_delete_api_key,
             api_keys::coflux_external_api_call,
