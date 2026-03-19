@@ -419,32 +419,93 @@ const CollaborativeEditor = ({ provider, currentTheme, workspaceTheme, onAddSubP
     };
   }, [editor]);
 
+  // 디버깅용: 에디터 인스턴스 자체의 협업 상태 확인
+  useEffect(() => {
+    if (editor) {
+      console.log('[Editor] Instance ready. Collaboration info:', (editor as any).collaboration);
+    }
+  }, [editor]);
+
+  // UndoManager를 리렌더링 시에도 유지하기 위한 Ref
+  const undoManagerRef = useRef<Y.UndoManager | null>(null);
+
   // Yjs UndoManager for Ctrl+Z / Ctrl+Y (ProseMirror history is disabled in collab mode)
   useEffect(() => {
-    const fragment = provider.doc.getXmlFragment("blocknote");
-    const undoManager = new Y.UndoManager(fragment);
+    console.log('[UndoManager Effect] START. Provider ID:', provider?.doc.guid || 'NULL');
+
+    if (!provider) {
+      console.log('[UndoManager Effect] No provider, skipping.');
+      if (undoManagerRef.current) {
+        undoManagerRef.current.destroy();
+        undoManagerRef.current = null;
+      }
+      return;
+    }
+    
+    const doc = provider.doc;
+    const fragment = doc.getXmlFragment("blocknote");
+    
+    // 이전에 생성된 매니저가 다른 도큐먼트를 보고 있다면 파괴하고 새로 생성
+    if (undoManagerRef.current && undoManagerRef.current.doc !== doc) {
+      console.log('[UndoManager] Document changed. Old Doc:', undoManagerRef.current.doc.guid, 'New Doc:', doc.guid);
+      undoManagerRef.current.destroy();
+      undoManagerRef.current = null;
+    }
+
+    if (!undoManagerRef.current) {
+      console.log('[UndoManager] Initializing NEW Super-Tracker for current doc:', doc.guid);
+      undoManagerRef.current = new Y.UndoManager(doc, { 
+        captureTimeout: 500,
+        ignoreRemoteMapChanges: false,
+      });
+
+      undoManagerRef.current.on('stack-item-added', (event) => {
+        console.log('[UndoManager] SUCCESS! Stack grown. Size:', undoManagerRef.current?.undoStack.length);
+      });
+    }
+
+    const um = undoManagerRef.current;
+
+    // 상세 트랜잭션 분석 로그 다시 활성화
+    const onTransaction = (tr: Y.Transaction) => {
+      console.log('[Yjs Transaction] Origin:', tr.origin, 'Local:', tr.local);
+    };
+    doc.on('transaction', onTransaction);
 
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Only intercept if the focus is inside a BlockNote element or the document body (not other inputs)
+      const isZ = e.code === 'KeyZ';
+      const isY = e.code === 'KeyY';
+      const isShift = e.shiftKey;
+      const isCtrl = e.ctrlKey || e.metaKey;
+
+      if (!isCtrl) return;
+
       const target = e.target as HTMLElement;
-      const isInsideEditor = target.closest('.bn-editor') || target === document.body;
-      
+      const isInsideEditor = !!target.closest('.bn-container') || !!target.closest('.bn-editor') || target === document.body;
       if (!isInsideEditor) return;
 
-      if (e.ctrlKey && e.key === 'z' && !e.shiftKey) {
-        e.preventDefault();
-        undoManager.undo();
+      // Undo: Ctrl + Z
+      if (isZ && !isShift) {
+        if (um.undoStack.length > 0) {
+          e.preventDefault();
+          e.stopPropagation();
+          um.undo();
+        }
       }
-      if ((e.ctrlKey && e.key === 'y') || (e.ctrlKey && e.shiftKey && e.key === 'z') || (e.ctrlKey && e.shiftKey && e.key === 'Z')) {
-        e.preventDefault();
-        undoManager.redo();
+      // Redo: Ctrl + Y or Ctrl + Shift + Z
+      if (isY || (isZ && isShift)) {
+        if (um.redoStack.length > 0) {
+          e.preventDefault();
+          e.stopPropagation();
+          um.redo();
+        }
       }
     };
 
-    document.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('keydown', handleKeyDown, { capture: true });
     return () => {
-      document.removeEventListener('keydown', handleKeyDown);
-      undoManager.destroy();
+      window.removeEventListener('keydown', handleKeyDown, { capture: true });
+      doc.off('transaction', onTransaction);
     };
   }, [provider]);
 
@@ -610,10 +671,11 @@ export const Canvas = ({
 
   // Initialize Y.Doc directly from SQLite Rust Database (Local Persistence)
   useEffect(() => {
-    let ydoc: Y.Doc;
+    let currentYdoc: Y.Doc | null = null;
     
     const initYjs = async () => {
-      ydoc = new Y.Doc();
+      const ydoc = new Y.Doc();
+      currentYdoc = ydoc;
 
       // Load saved updates from Rust DB
       try {
@@ -621,22 +683,47 @@ export const Canvas = ({
         for (const updateArr of savedUpdates) {
           Y.applyUpdate(ydoc, new Uint8Array(updateArr));
         }
-      } catch (e) { console.error("Failed to load Yjs updates from DB:", e); }
+      } catch (e) {
+        console.error("Failed to load Yjs updates from DB:", e);
+      }
 
       // Listen for future updates and auto-save them
       ydoc.on('update', async (update: Uint8Array) => {
         try {
-          await invoke('save_yjs_update', { pageId: activePage.id, updateBlob: Array.from(update) });
-        } catch (e) { console.error("Failed to save Yjs update:", e); }
+          await invoke('save_yjs_update', { 
+            pageId: activePage.id, 
+            updateBlob: Array.from(update) 
+          });
+        } catch (e) {
+          console.error("Failed to save Yjs update:", e);
+        }
       });
       
       const awareness = new Awareness(ydoc);
-      // Set local user info for Awareness (#3: Member display)
+      
+      const mockProvider = {
+        doc: ydoc,
+        awareness,
+        on: (event: string, handler: any) => {
+          if (event === 'sync') {
+            setTimeout(() => handler(true), 0);
+          }
+          ydoc.on(event as any, handler);
+        },
+        off: (event: string, handler: any) => {
+          ydoc.off(event as any, handler);
+        },
+        emit: (event: string, ...args: any[]) => {},
+        destroy: () => {},
+        connect: () => {},
+        disconnect: () => {},
+      };
+
       awareness.setLocalStateField('user', {
         name: 'Coflux User',
         color: '#2e2e2e'
       });
-      // Track active users
+
       const updateUsers = () => {
         const states = awareness.getStates();
         if (onUserCountChange) onUserCountChange(states.size);
@@ -644,11 +731,14 @@ export const Canvas = ({
       awareness.on('change', updateUsers);
       updateUsers();
 
-      setProvider({ doc: ydoc, awareness });
+      setProvider(mockProvider);
     };
     
     initYjs();
-    return () => { if (ydoc) ydoc.destroy(); setProvider(null); };
+    return () => {
+      if (currentYdoc) currentYdoc.destroy();
+      setProvider(null);
+    };
   }, [activePage.id]);
 
   // --- WebRTC Connection state listener ---
@@ -931,7 +1021,7 @@ export const Canvas = ({
         </div>
 
         <div style={{ marginLeft: '-50px', flex: 1, display: 'flex', flexDirection: 'column' }}>
-          {provider ? <CollaborativeEditor provider={provider} currentTheme={currentTheme} workspaceTheme={workspaceTheme} onAddSubPage={onAddSubPage} pageId={activePage.id} allPages={allPages} /> : <div>Loading page data...</div>}
+          {provider ? <CollaborativeEditor key={activePage.id} provider={provider} currentTheme={currentTheme} workspaceTheme={workspaceTheme} onAddSubPage={onAddSubPage} pageId={activePage.id} allPages={allPages} /> : <div>Loading page data...</div>}
         </div>
 
         {/* Child Pages displayed as clickable Notion-style links */}

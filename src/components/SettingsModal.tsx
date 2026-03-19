@@ -387,7 +387,7 @@ export const SettingsModal = ({
       const { error } = await supabase.auth.signInWithOAuth({
         provider,
         options: {
-          redirectTo: window.location.origin, // 데스크톱 환경 리다이렉트
+          redirectTo: 'coflux://auth', // 데스크톱 앱 딥링크
         }
       });
       if (error) throw error;
@@ -408,7 +408,12 @@ export const SettingsModal = ({
     
     setIsSendingLink(true);
     try {
-      const { error } = await supabase.auth.signInWithOtp({ email: loginEmail });
+      const { error } = await supabase.auth.signInWithOtp({ 
+        email: loginEmail,
+        options: {
+          emailRedirectTo: 'coflux://auth', 
+        }
+      });
       if (error) {
         alert('로그인 요청 실패: ' + error.message);
       } else {

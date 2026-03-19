@@ -9,6 +9,7 @@ import { Menu, Search, Users, Bell, Sparkles, Zap, Code2, GitBranch } from 'luci
 import { AiChatWidget } from './components/AiChatWidget';
 import { KnowledgeMap } from './components/KnowledgeMap';
 import { invoke } from '@tauri-apps/api/core';
+import { onOpenUrl } from '@tauri-apps/plugin-deep-link';
 import { applyTheme, resolveTheme, WorkspaceTheme, PRESET_THEMES, getContrastColor } from './lib/theme';
 import { supabase, UserProfile } from './lib/supabase';
 import './lib/i18n'; // E28: i18n 초기화
@@ -38,7 +39,7 @@ export interface PageData {
 }
 
 function App() {
-  const { t } = useTranslation(); // E28: useTranslation 훅 추가
+  const { t } = useTranslation();
 
   const [theme, setTheme] = useState<'light' | 'dark'>('light');
   const [activeThemeId, setActiveThemeId] = useState<string>('notion-light');
@@ -53,9 +54,9 @@ function App() {
 
   const [user, setUser] = useState<UserProfile | null>(null);
   const [isAuthLoading, setIsAuthLoading] = useState(true);
-  const [showLoginPrompt, setShowLoginPrompt] = useState(false); // E28: 로그인 프롬프트 상태
-  const [loginEmail, setLoginEmail] = useState(''); // E28: 로그인 이메일 상태
-  const [isSendingLink, setIsSendingLink] = useState(false); // E28: 매직 링크 전송 중 상태
+  const [showLoginPrompt, setShowLoginPrompt] = useState(false);
+  const [loginEmail, setLoginEmail] = useState('');
+  const [isSendingLink, setIsSendingLink] = useState(false);
 
   const [workspaces, setWorkspaces] = useState<WorkspaceData[]>([]);
   const [activeWorkspaceId, setActiveWorkspaceId] = useState<string | null>(null);
@@ -63,14 +64,16 @@ function App() {
   const [activePageId, setActivePageId] = useState<string | null>(null);
   const [memberCount, setMemberCount] = useState(1);
 
-  // Search state
   const [searchQuery, setSearchQuery] = useState('');
   const [searchFocused, setSearchFocused] = useState(false);
   const searchRef = useRef<HTMLDivElement>(null);
 
-  // Supabase 세션 초기화 및 로컬 동기화
   useEffect(() => {
-    const initAuth = async () => {
+    let unlistenDeepLink: (() => void) | undefined;
+    let authSubscription: { unsubscribe: () => void } | undefined;
+
+    const setupAuth = async () => {
+      // 1. Initial Profile Load (Local)
       try {
         const localProfile = await invoke<UserProfile | null>('coflux_get_user_profile');
         if (localProfile) setUser(localProfile);
@@ -78,6 +81,7 @@ function App() {
         console.error('로컬 프로필 로드 실패:', e);
       }
 
+      // 2. Initial Session Check (Supabase)
       const { data: { session } } = await supabase.auth.getSession();
       if (session?.user) {
         const profile: UserProfile = {
@@ -86,14 +90,50 @@ function App() {
           tier: 'free',
         };
         setUser(profile);
-        await invoke('coflux_sync_user_profile', { user: profile });
+        try {
+          await invoke('coflux_sync_user_profile', { user: profile });
+        } catch (e) {
+          console.warn('[WebView] Native sync skipped:', e);
+        }
       } else {
-        setShowLoginPrompt(true); // E28: 세션 없으면 로그인 프롬프트 표시
+        setShowLoginPrompt(true);
       }
 
-      supabase.auth.onAuthStateChange(async (_event, session) => {
+      // 3. Deep Link Listener Setup
+      try {
+        unlistenDeepLink = await onOpenUrl(async (urls) => {
+          console.log('[DeepLink] URLs received:', urls);
+          for (const urlStr of urls) {
+            if (urlStr.includes('coflux://auth')) {
+              const hash = urlStr.split('#')[1] || urlStr.split('?')[1];
+              if (hash) {
+                const params = new URLSearchParams(hash);
+                const accessToken = params.get('access_token');
+                const refreshToken = params.get('refresh_token');
+                if (accessToken && refreshToken) {
+                  const { data, error } = await supabase.auth.setSession({
+                    access_token: accessToken,
+                    refresh_token: refreshToken
+                  });
+                  if (!error && data.user) {
+                    const profile: UserProfile = { id: data.user.id, email: data.user.email, tier: 'free' };
+                    setUser(profile);
+                    await invoke('coflux_sync_user_profile', { user: profile });
+                    setShowLoginPrompt(false);
+                    console.log('[DeepLink] Session established via Deep Link');
+                  }
+                }
+              }
+            }
+          }
+        });
+      } catch (e) {
+        console.error('[DeepLink] Setup failed:', e);
+      }
+
+      // 4. Auth State Change Listener
+      const { data } = supabase.auth.onAuthStateChange(async (_event, session) => {
         if (session?.user) {
-          // Supabase DB에서 최신 티어 정보 가져오기
           const { data: dbUser } = await supabase
             .from('users')
             .select('tier, stripe_customer_id')
@@ -107,23 +147,32 @@ function App() {
             stripe_customer_id: dbUser?.stripe_customer_id,
           };
           setUser(profile);
-          await invoke('coflux_sync_user_profile', { user: profile });
-          setShowLoginPrompt(false); // E28: 로그인 성공 시 프롬프트 닫기
+          try {
+            await invoke('coflux_sync_user_profile', { user: profile });
+          } catch (e) {
+            console.warn('[WebView] Native sync skipped:', e);
+          }
+          setShowLoginPrompt(false);
         } else {
           setUser(null);
-          await invoke('coflux_logout_local');
-          setShowLoginPrompt(true); // E28: 로그아웃 시 로그인 프롬프트 표시
+          try {
+            await invoke('coflux_logout_local');
+          } catch (e) {
+            console.warn('[WebView] Native logout skipped:', e);
+          }
+          setShowLoginPrompt(true);
         }
       });
+      authSubscription = data.subscription;
 
       setIsAuthLoading(false);
     };
 
-    const authResPromise = initAuth();
+    setupAuth();
+
     return () => {
-      authResPromise.then(() => {
-        // cleanup logic if needed
-      });
+      if (unlistenDeepLink) unlistenDeepLink();
+      if (authSubscription) authSubscription.unsubscribe();
     };
   }, []);
 
@@ -136,7 +185,12 @@ function App() {
     
     setIsSendingLink(true);
     try {
-      const { error } = await supabase.auth.signInWithOtp({ email: loginEmail });
+      const { error } = await supabase.auth.signInWithOtp({ 
+        email: loginEmail,
+        options: {
+          emailRedirectTo: 'coflux://auth',
+        }
+      });
       if (error) {
         alert(`${t('alert_login_failed')} ${error.message}`);
       } else {
@@ -145,7 +199,7 @@ function App() {
         setLoginEmail('');
       }
     } catch (e) {
-      alert('Error: ' + e);
+      alert('오류 발생: ' + e);
     } finally {
       setIsSendingLink(false);
     }
@@ -159,7 +213,6 @@ function App() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // Load workspaces and pages from SQLite DB on mount
   useEffect(() => {
     async function loadData() {
       try {
@@ -168,7 +221,6 @@ function App() {
         const wsId = loadedWs.length > 0 ? loadedWs[0].id : 'default';
         setActiveWorkspaceId(wsId);
 
-        // Load and apply saved theme for this workspace
         try {
           const themeRow = await invoke<{ theme_id: string; custom_theme_json: string | null }>('get_workspace_theme', { workspaceId: wsId });
           const customTheme: WorkspaceTheme | undefined = themeRow.custom_theme_json ? JSON.parse(themeRow.custom_theme_json) : undefined;
@@ -222,11 +274,9 @@ function App() {
     handleThemeChange(nextId);
   };
 
-  // Filter pages for the active workspace (excluding deleted)
   const workspacePages = pages.filter(p => (p.workspaceId || 'default') === activeWorkspaceId && !p.isDeleted);
   const trashedPages = pages.filter(p => (p.workspaceId || 'default') === activeWorkspaceId && p.isDeleted);
 
-  // Search results: filter all non-deleted pages by title
   const searchResults = searchQuery.trim()
     ? pages.filter(p => !p.isDeleted && p.title.toLowerCase().includes(searchQuery.toLowerCase())).slice(0, 8)
     : [];
@@ -249,7 +299,7 @@ function App() {
   }
 
   return (
-    <div className="app-container">
+    <div className="app-container" style={{ background: 'var(--bg-primary)', color: 'var(--text-primary)' }}>
       {sidebarOpen && (
         <Sidebar
           theme={theme}
@@ -260,20 +310,19 @@ function App() {
           activePageId={activePageId || ''}
           setActivePageId={setActivePageId}
           workspaces={workspaces}
-          activeWorkspaceId={activeWorkspaceId || 'default'}
+          activeWorkspaceId={activeWorkspaceId || ''}
           onSwitchWorkspace={handleSwitchWorkspace}
           onAddWorkspace={async (name: string) => {
-            const newId = Date.now().toString();
-            const ws: WorkspaceData = { id: newId, name, icon: name.charAt(0).toUpperCase(), createdAt: new Date().toLocaleDateString() };
+            const newWs: WorkspaceData = { id: Date.now().toString(), name, icon: name.charAt(0).toUpperCase(), createdAt: new Date().toISOString() };
             try {
-              await invoke('save_workspace', { workspace: ws });
-              setWorkspaces([...workspaces, ws]);
-              handleSwitchWorkspace(newId);
+              await invoke('save_workspace', { workspace: newWs });
+              setWorkspaces([...workspaces, newWs]);
+              handleSwitchWorkspace(newWs.id);
             } catch (e) { console.error(e); }
           }}
-          onAddPage={async () => {
+          onAddPage={async (parentId?: string) => {
             const newId = Date.now().toString();
-            const newPage: PageData = { id: newId, title: 'Untitled', icon: '📄', updatedAt: new Date().toLocaleDateString(), coverImage: null, isFavorite: false, workspaceId: activeWorkspaceId, parentId: null, isDeleted: false, sortOrder: pages.length, titleColor: null, titleBgColor: null };
+            const newPage: PageData = { id: newId, title: 'Untitled', icon: '📄', updatedAt: new Date().toLocaleDateString(), coverImage: null, isFavorite: false, workspaceId: activeWorkspaceId, parentId: parentId || null, isDeleted: false, titleColor: null, titleBgColor: null };
             try {
               await invoke('save_page', { page: newPage });
               setPages([...pages, newPage]);
@@ -289,13 +338,12 @@ function App() {
           onDeletePage={async (id: string) => {
             try {
               await invoke('delete_page', { pageId: id });
-              // Soft delete: mark as deleted in local state
-              const markDeleted = (pid: string) => {
-                setPages(prev => prev.map(p => p.id === pid || p.parentId === pid ? { ...p, isDeleted: true } : p));
-              };
-              markDeleted(id);
+              setPages(prev => prev.map(p => {
+                if (p.id === id || p.parentId === id) return { ...p, isDeleted: true };
+                return p;
+              }));
               if (activePageId === id) {
-                const remaining = workspacePages.filter(p => p.id !== id);
+                const remaining = pages.filter(p => !p.isDeleted && p.id !== id && p.workspaceId === activeWorkspaceId);
                 setActivePageId(remaining.length > 0 ? remaining[0].id : null);
               }
             } catch (e) { console.error(e); }
@@ -334,19 +382,18 @@ function App() {
                 <Menu size={20} color="var(--text-secondary)" />
               </button>
             )}
-            {/* Search with dropdown */}
             <div ref={searchRef} style={{ position: 'relative' }}>
               <div className="search-container">
                 <Search size={16} color="var(--text-secondary)" />
                 <input
-                  type="text"
                   className="search-input"
-                  placeholder="Search..."
+                  placeholder="Search"
                   value={searchQuery}
                   onChange={e => setSearchQuery(e.target.value)}
                   onFocus={() => setSearchFocused(true)}
                 />
               </div>
+
               {searchFocused && searchQuery.trim() && (
                 <div style={{ position: 'absolute', top: '40px', left: 0, width: '320px', background: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '8px', boxShadow: '0 4px 16px rgba(0,0,0,0.12)', zIndex: 300, padding: '4px', maxHeight: '300px', overflow: 'auto' }}>
                   {searchResults.length > 0 ? searchResults.map(p => (
@@ -395,7 +442,7 @@ function App() {
               pageTitle={pages.find(p => p.id === activePageId)?.title}
               pageId={activePageId || undefined}
               workspaceId={activeWorkspaceId || undefined}
-              onSaveAsPage={async (title, markdown) => {
+              onSaveAsPage={async (title: string, markdown: string) => {
                 const newId = Date.now().toString();
                 const newPage: PageData = {
                   id: newId, title, icon: '📄', updatedAt: new Date().toLocaleDateString(),
@@ -407,7 +454,6 @@ function App() {
                   setPages(prev => [...prev, newPage]);
                   setActivePageId(newId);
                   
-                  // 새 페이지 렌더링 이후 Markdown 삽입
                   setTimeout(() => {
                     window.dispatchEvent(new CustomEvent('coflux-inject-markdown', { detail: { pageId: newId, markdown } }));
                   }, 150);
@@ -447,7 +493,6 @@ function App() {
         )}
       </div>
 
-      {/* Knowledge Map */}
       {knowledgeMapOpen && (
         <KnowledgeMap
           pages={workspacePages}
@@ -457,17 +502,14 @@ function App() {
         />
       )}
 
-      {/* Workflow Builder Modal */}
       {workflowsOpen && (
         <WorkflowBuilderModal onClose={() => setWorkflowsOpen(false)} />
       )}
 
-      {/* Script Editor Modal */}
       {scriptEditorOpen && (
         <ScriptEditorModal onClose={() => setScriptEditorOpen(false)} />
       )}
 
-      {/* Settings Modal */}
       {settingsOpen && (
         <SettingsModal
           user={user}
@@ -477,58 +519,68 @@ function App() {
           savedCustomTheme={savedCustomTheme}
           onThemeChange={handleThemeChange}
           activeWorkspace={workspaces.find(w => w.id === activeWorkspaceId)}
-          onUpdateWorkspace={async (ws: WorkspaceData) => {
-            try {
-              await invoke('save_workspace', { workspace: ws });
-              setWorkspaces(workspaces.map(w => w.id === ws.id ? ws : w));
-            } catch (e) { console.error(e); }
+          onUpdateWorkspace={async (ws) => {
+             try {
+                await invoke('save_workspace', { workspace: ws });
+                setWorkspaces(workspaces.map(w => w.id === ws.id ? ws : w));
+             } catch (e) { console.error(e); }
           }}
           onClose={() => setSettingsOpen(false)}
         />
       )}
 
-      {/* E28: Custom Login Prompt Modal */}
-      {showLoginPrompt && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(4px)', zIndex: 600, display: 'flex', alignItems: 'center', justifyContent: 'center', animation: 'fadeIn 0.2s ease-out' }}>
-          <div style={{ background: 'var(--bg-primary)', borderRadius: '16px', width: '400px', padding: '32px', boxShadow: '0 24px 64px rgba(0,0,0,0.3)', border: '1px solid var(--border-color)', display: 'flex', flexDirection: 'column', gap: '20px', animation: 'slideUpFade 0.2s ease-out forwards' }}>
-            <div>
-              <h3 style={{ margin: '0 0 8px', fontSize: '20px', fontWeight: 700, color: 'var(--text-primary)' }}>{t('login_prompt_title')}</h3>
-              <p style={{ margin: 0, fontSize: '13px', color: 'var(--text-secondary)', lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>
-                {t('login_prompt_desc')}
-              </p>
+      {/* E28: Initial Login Prompt Modal */}
+      {showLoginPrompt && !user && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(8px)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', animation: 'fadeIn 0.3s ease-out' }}>
+          <div style={{ background: 'var(--bg-primary)', borderRadius: '24px', width: '420px', padding: '40px', boxShadow: '0 32px 80px rgba(0,0,0,0.4)', border: '1px solid var(--border-color)', display: 'flex', flexDirection: 'column', gap: '24px', textAlign: 'center', animation: 'slideUpFade 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '16px' }}>
+              <div style={{ width: '64px', height: '64px', background: 'var(--accent)', borderRadius: '18px', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 8px 16px rgba(var(--accent-rgb), 0.2)' }}>
+                <img src={logo} alt="Logo" style={{ width: '40px', height: '40px', filter: 'brightness(0) invert(1)' }} />
+              </div>
+              <div>
+                <h2 style={{ margin: 0, fontSize: '24px', fontWeight: 800, color: 'var(--text-primary)', letterSpacing: '-0.02em' }}>Welcome to CoFlux</h2>
+                <p style={{ margin: '8px 0 0', fontSize: '14px', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+                  {t('login_prompt_message')}
+                </p>
+              </div>
             </div>
-            
-            <input 
-              type="email" 
-              placeholder={t('placeholder_email')} 
-              autoFocus
-              value={loginEmail}
-              onChange={e => setLoginEmail(e.target.value)}
-              onKeyDown={e => {
-                if (e.key === 'Enter') submitMagicLink();
-                if (e.key === 'Escape') setShowLoginPrompt(false);
-              }}
-              style={{ width: '100%', padding: '14px 16px', borderRadius: '10px', border: '1px solid var(--border-color)', background: 'var(--bg-secondary)', color: 'var(--text-primary)', fontSize: '15px', outline: 'none', transition: 'border 0.2s' }}
-              onFocus={e => (e.target.style.border = '1px solid var(--accent)')}
-              onBlur={e => (e.target.style.border = '1px solid var(--border-color)')}
-            />
 
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '8px' }}>
-              <button 
-                onClick={() => setShowLoginPrompt(false)}
-                disabled={isSendingLink}
-                style={{ padding: '10px 16px', borderRadius: '8px', border: 'none', background: 'transparent', color: 'var(--text-secondary)', fontSize: '14px', fontWeight: 600, cursor: 'pointer' }}
-              >
-                {t('btn_cancel')}
-              </button>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              <input 
+                type="email" 
+                placeholder="name@example.com" 
+                autoFocus
+                value={loginEmail}
+                onChange={e => setLoginEmail(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && submitMagicLink()}
+                style={{ width: '100%', padding: '14px 18px', borderRadius: '12px', border: '1px solid var(--border-color)', background: 'var(--bg-secondary)', color: 'var(--text-primary)', fontSize: '15px', outline: 'none', transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)' }}
+              />
               <button 
                 onClick={submitMagicLink}
                 disabled={isSendingLink || !loginEmail.trim()}
-                style={{ padding: '10px 20px', borderRadius: '8px', border: 'none', background: 'var(--text-primary)', color: 'var(--bg-primary)', fontSize: '14px', fontWeight: 600, cursor: (isSendingLink || !loginEmail.trim()) ? 'not-allowed' : 'pointer', opacity: (isSendingLink || !loginEmail.trim()) ? 0.5 : 1 }}
+                style={{ width: '100%', padding: '14px', borderRadius: '12px', border: 'none', background: 'var(--text-primary)', color: 'var(--bg-primary)', fontSize: '15px', fontWeight: 700, cursor: (isSendingLink || !loginEmail.trim()) ? 'not-allowed' : 'pointer', opacity: (isSendingLink || !loginEmail.trim()) ? 0.6 : 1, transition: 'all 0.2s', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}
               >
-                {isSendingLink ? t('btn_sending') : t('btn_continue')}
+                {isSendingLink ? '...' : (
+                  <>
+                    <span>{t('btn_continue_email')}</span>
+                    <Zap size={14} fill="currentColor" />
+                  </>
+                )}
               </button>
             </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+              <div style={{ flex: 1, height: '1px', background: 'var(--border-color)' }}></div>
+              <span style={{ fontSize: '11px', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600 }}>or local mode</span>
+              <div style={{ flex: 1, height: '1px', background: 'var(--border-color)' }}></div>
+            </div>
+
+            <button 
+              onClick={() => setShowLoginPrompt(false)}
+              style={{ padding: '10px', background: 'transparent', border: 'none', color: 'var(--text-secondary)', fontSize: '13px', fontWeight: 500, cursor: 'pointer', textDecoration: 'underline', opacity: 0.8 }}
+            >
+              로그인 없이 계속하기 (로컬 전용)
+            </button>
           </div>
         </div>
       )}
