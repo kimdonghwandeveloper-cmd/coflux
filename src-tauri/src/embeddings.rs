@@ -16,6 +16,13 @@ pub struct SearchResult {
     pub score: f32,
 }
 
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct RelatedPage {
+    pub page_id: String,
+    pub title: String,
+    pub score: f32,
+}
+
 pub fn init_embeddings_table() -> Result<(), String> {
     let guard = DB_CONN.lock().map_err(|e| e.to_string())?;
     let conn = guard.as_ref().ok_or("DB not initialized")?;
@@ -23,14 +30,19 @@ pub fn init_embeddings_table() -> Result<(), String> {
         "CREATE TABLE IF NOT EXISTS page_embeddings (
             id          INTEGER PRIMARY KEY AUTOINCREMENT,
             page_id     TEXT NOT NULL,
-            chunk_index INTEGER NOT NULL,
+            block_id    TEXT,
+            chunk_index INTEGER,
             chunk_text  TEXT NOT NULL,
-            embedding   BLOB NOT NULL,
-            UNIQUE(page_id, chunk_index)
+            embedding   BLOB NOT NULL
         )",
         [],
     )
     .map_err(|e| e.to_string())?;
+
+    // Migration: Add block_id if it doesn't exist
+    let _ = conn.execute("ALTER TABLE page_embeddings ADD COLUMN block_id TEXT", []);
+    // Migration: Add unique index for incremental updates
+    let _ = conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_page_block ON page_embeddings(page_id, block_id)", []);
     conn.execute(
         "CREATE TABLE IF NOT EXISTS page_links (
             source_page_id TEXT NOT NULL,
@@ -206,31 +218,95 @@ pub async fn coflux_index_page(
         .map_err(|e| e.to_string())?;
     }
 
-    // ── 위키링크 파싱 및 저장 ──────────────────────────────────────────────────
-    let linked_titles = extract_wiki_links(&full_text);
-    if !linked_titles.is_empty() {
-        let guard = DB_CONN.lock().map_err(|e| e.to_string())?;
-        let conn = guard.as_ref().ok_or("DB not initialized")?;
-        // 기존 링크 삭제
-        conn.execute("DELETE FROM page_links WHERE source_page_id = ?1", params![page_id])
-            .map_err(|e| e.to_string())?;
-        for title in &linked_titles {
-            let result: rusqlite::Result<String> = conn.query_row(
-                "SELECT id FROM pages WHERE title = ?1 AND (is_deleted IS NULL OR is_deleted = 0)",
-                params![title],
-                |row| row.get(0),
+    eprintln!("[Embeddings] 인덱싱 완료: page_id={page_id}, chunks={chunk_count}");
+    Ok(chunk_count)
+}
+
+/// 텍스트에서 위키링크를 파싱하여 page_links 테이블을 업데이트합니다.
+#[tauri::command]
+pub async fn coflux_update_wiki_links(
+    page_id: String,
+    text: String,
+) -> Result<(), String> {
+    let linked_titles = extract_wiki_links(&text);
+    let guard = DB_CONN.lock().map_err(|e| e.to_string())?;
+    let conn = guard.as_ref().ok_or("DB not initialized")?;
+    
+    // 기존 링크 삭제
+    conn.execute("DELETE FROM page_links WHERE source_page_id = ?1", params![page_id])
+        .map_err(|e| e.to_string())?;
+        
+    for title in &linked_titles {
+        let result: rusqlite::Result<String> = conn.query_row(
+            "SELECT id FROM pages WHERE title = ?1 AND (is_deleted IS NULL OR is_deleted = 0)",
+            params![title],
+            |row| row.get(0),
+        );
+        if let Ok(target_id) = result {
+            let _ = conn.execute(
+                "INSERT OR IGNORE INTO page_links (source_page_id, target_page_id) VALUES (?1, ?2)",
+                params![page_id, target_id],
             );
-            if let Ok(target_id) = result {
-                let _ = conn.execute(
-                    "INSERT OR IGNORE INTO page_links (source_page_id, target_page_id) VALUES (?1, ?2)",
-                    params![page_id, target_id],
-                );
-            }
         }
     }
+    Ok(())
+}
 
-    eprintln!("[Embeddings] 인덱싱 완료: page_id={page_id}, chunks={chunk_count}, links={}", linked_titles.len());
-    Ok(chunk_count)
+/// 단일 블록에 대한 임베딩을 업데이트하거나 생성합니다.
+#[tauri::command]
+pub async fn coflux_update_block_embedding(
+    app: tauri::AppHandle,
+    page_id: String,
+    block_id: String,
+    text: String,
+) -> Result<(), String> {
+    let api_key = match crate::api_keys::decrypt_key_internal(&app, "openai") {
+        Ok(k) => k,
+        Err(_) => return Ok(()),
+    };
+
+    if text.trim().is_empty() {
+        let guard = DB_CONN.lock().map_err(|e| e.to_string())?;
+        let conn = guard.as_ref().ok_or("DB not initialized")?;
+        conn.execute(
+            "DELETE FROM page_embeddings WHERE page_id = ?1 AND block_id = ?2",
+            params![page_id, block_id],
+        ).map_err(|e| e.to_string())?;
+        return Ok(());
+    }
+
+    let embedding = call_openai_embeddings(&text, &api_key).await?;
+    let blob = embedding_to_blob(&embedding);
+
+    let guard = DB_CONN.lock().map_err(|e| e.to_string())?;
+    let conn = guard.as_ref().ok_or("DB not initialized")?;
+    conn.execute(
+        "INSERT INTO page_embeddings (page_id, block_id, chunk_text, embedding)
+         VALUES (?1, ?2, ?3, ?4)
+         ON CONFLICT(page_id, block_id) DO UPDATE SET chunk_text=excluded.chunk_text, embedding=excluded.embedding",
+        params![page_id, block_id, text, blob],
+    ).map_err(|e| e.to_string())?;
+
+    Ok(())
+}
+
+/// 여러 블록 임베딩을 한 번에 삭제합니다.
+#[tauri::command]
+pub async fn coflux_delete_block_embeddings(
+    page_id: String,
+    block_ids: Vec<String>,
+) -> Result<(), String> {
+    let guard = DB_CONN.lock().map_err(|e| e.to_string())?;
+    let conn = guard.as_ref().ok_or("DB not initialized")?;
+    
+    for bid in block_ids {
+        conn.execute(
+            "DELETE FROM page_embeddings WHERE page_id = ?1 AND block_id = ?2",
+            params![page_id, bid],
+        ).map_err(|e| e.to_string())?;
+    }
+    
+    Ok(())
 }
 
 /// 쿼리와 유사한 청크를 코사인 유사도 기준으로 반환합니다.
@@ -271,6 +347,71 @@ pub async fn coflux_search_similar(
     scored.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
     scored.truncate(limit);
     Ok(scored)
+}
+
+/// 현재 텍스트와 연관된 페이지들을 찾아 반환합니다. (페이지 단위 집계)
+#[tauri::command]
+pub async fn coflux_find_related_pages(
+    app: tauri::AppHandle,
+    text: String,
+    current_page_id: Option<String>,
+    limit: usize,
+) -> Result<Vec<RelatedPage>, String> {
+    let api_key = crate::api_keys::decrypt_key_internal(&app, "openai")
+        .map_err(|_| "OpenAI API 키가 없습니다.".to_string())?;
+
+    let query_embedding = call_openai_embeddings(&text, &api_key).await?;
+
+    // 모든 청크와 유사도 계산 후 페이지별 최대 점수 추출
+    let rows: Vec<(String, String, Vec<u8>)> = {
+        let guard = DB_CONN.lock().map_err(|e| e.to_string())?;
+        let conn = guard.as_ref().ok_or("DB not initialized")?;
+        
+        // 페이지 제목을 같이 가져오기 위해 조인
+        let mut stmt = conn.prepare("
+            SELECT e.page_id, p.title, e.embedding 
+            FROM page_embeddings e
+            JOIN pages p ON e.page_id = p.id
+            WHERE (p.is_deleted IS NULL OR p.is_deleted = 0)
+        ").map_err(|e| e.to_string())?;
+
+        let collected: Vec<(String, String, Vec<u8>)> = stmt
+            .query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))
+            .map_err(|e| e.to_string())?
+            .filter_map(|r| r.ok())
+            .collect();
+        collected
+    };
+
+    use std::collections::HashMap;
+    let mut page_scores: HashMap<String, (String, f32)> = HashMap::new();
+
+    for (pid, title, blob) in rows {
+        // 현재 페이지는 제외
+        if let Some(ref current_id) = current_page_id {
+            if &pid == current_id {
+                continue;
+            }
+        }
+
+        let emb = blob_to_embedding(&blob);
+        let score = cosine_similarity(&query_embedding, &emb);
+
+        let entry = page_scores.entry(pid.clone()).or_insert((title, 0.0));
+        if score > entry.1 {
+            entry.1 = score;
+        }
+    }
+
+    let mut result: Vec<RelatedPage> = page_scores
+        .into_iter()
+        .map(|(id, (title, score))| RelatedPage { page_id: id, title, score })
+        .collect();
+
+    result.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+    result.truncate(limit);
+
+    Ok(result)
 }
 
 /// 특정 페이지의 인덱싱 청크 수를 반환합니다 (0이면 미인덱싱).

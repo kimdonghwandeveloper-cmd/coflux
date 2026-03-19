@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { indexPage, getBacklinks, LinkPageInfo } from '../lib/embeddings';
+import { getBacklinks, findRelatedPages, RelatedPage, LinkPageInfo, updateBlockEmbedding, deleteBlockEmbeddings, updateWikiLinks } from '../lib/embeddings';
 import { webrtcClient } from '../lib/webrtc_client';
 import { listen, UnlistenFn } from '@tauri-apps/api/event';
 import { BlockNoteView } from "@blocknote/mantine";
@@ -9,7 +9,7 @@ import { filterSuggestionItems } from "@blocknote/core/extensions";
 import "@blocknote/mantine/style.css";
 import { PageData } from '../App';
 import { WorkspaceTheme } from '../lib/theme';
-import { Image as ImageIcon, Wifi, Palette, Check } from 'lucide-react';
+import { Image as ImageIcon, Wifi, Palette, Check, Sparkles, Plus } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { invoke } from '@tauri-apps/api/core';
 import * as Y from 'yjs';
@@ -72,6 +72,7 @@ function buildBlockNoteTheme(t: WorkspaceTheme) {
 const CollaborativeEditor = ({ provider, currentTheme, workspaceTheme, onAddSubPage, pageId, allPages }: { provider: any, currentTheme: 'light' | 'dark', workspaceTheme?: WorkspaceTheme, onAddSubPage: () => void, pageId: string, allPages?: PageData[] }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [aiSuggestions, setAiSuggestions] = useState<RelatedPage[]>([]);
 
   const clearSelection = useCallback(() => {
     setSelectedIds(prev => prev.size === 0 ? prev : new Set());
@@ -225,30 +226,106 @@ const CollaborativeEditor = ({ provider, currentTheme, workspaceTheme, onAddSubP
     return () => window.removeEventListener('coflux-inject-markdown', handler);
   }, [pageId, editor]);
 
-  // Auto-index page content for semantic search (debounced 5s)
+  // Auto-index and Proactive AI suggestions (debounced 5s)
   const indexTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const aiSuggestTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastBlockContentRef = useRef<Map<string, string>>(new Map());
+
   useEffect(() => {
     if (!editor) return;
     const unsubscribe = editor.onChange(() => {
+      // 1. Incremental Indexing logic
       if (indexTimerRef.current) clearTimeout(indexTimerRef.current);
       indexTimerRef.current = setTimeout(async () => {
-        const text = editor.document
-          .map((block: any) => {
-            const inline = Array.isArray(block.content)
-              ? block.content.map((c: any) => c.text ?? '').join('')
-              : '';
-            return inline;
-          })
-          .filter(Boolean)
-          .join('\n');
-        await indexPage(pageId, '', text);
+        const currentBlocks = editor.document;
+        const updatedBlockContent = new Map<string, string>();
+        
+        const dirtyBlocks: { id: string, text: string }[] = [];
+        const currentIds = new Set<string>();
+
+        for (const block of currentBlocks) {
+          const blockId = block.id;
+          currentIds.add(blockId);
+          const blockText = Array.isArray(block.content)
+            ? block.content.map((c: any) => c.text ?? '').join('')
+            : '';
+          
+          updatedBlockContent.set(blockId, blockText);
+
+          if (lastBlockContentRef.current.get(blockId) !== blockText) {
+            if (blockText.trim().length > 0) {
+              dirtyBlocks.push({ id: blockId, text: blockText });
+            }
+          }
+        }
+
+        // Identify deleted blocks
+        const deletedIds: string[] = [];
+        for (const oldId of lastBlockContentRef.current.keys()) {
+          if (!currentIds.has(oldId)) {
+            deletedIds.push(oldId);
+          }
+        }
+
+        // Perform incremental updates
+        if (dirtyBlocks.length > 0) {
+          console.log(`[Embeddings] Incremental update: ${dirtyBlocks.length} blocks`);
+          for (const { id, text } of dirtyBlocks) {
+            await updateBlockEmbedding(pageId, id, text);
+          }
+        }
+        if (deletedIds.length > 0) {
+          console.log(`[Embeddings] Deleting ${deletedIds.length} blocks`);
+          await deleteBlockEmbeddings(pageId, deletedIds);
+        }
+
+        // Always update wiki-links if anything changed
+        if (dirtyBlocks.length > 0 || deletedIds.length > 0) {
+          const fullText = currentBlocks
+            .map((block: any) => Array.isArray(block.content) ? block.content.map((c: any) => c.text ?? '').join('') : '')
+            .join('\n');
+          await updateWikiLinks(pageId, fullText);
+        }
+
+        lastBlockContentRef.current = updatedBlockContent;
       }, 5000);
+
+      // 2. Proactive AI Suggestions (1.2초 지연 후 연관 문서 조회)
+      if (aiSuggestTimerRef.current) clearTimeout(aiSuggestTimerRef.current);
+      aiSuggestTimerRef.current = setTimeout(async () => {
+        // 현재 포커스된 블록이나 최근 작성된 텍스트 추출 (여기서는 문서 전체의 마지막 일부를 활용하거나 전체를 활용)
+        const fullText = editor.document
+          .map((block: any) => Array.isArray(block.content) ? block.content.map((c: any) => c.text ?? '').join('') : '')
+          .filter(Boolean)
+          .join(' ');
+
+        if (fullText.length > 20) {
+          const results = await findRelatedPages(fullText, pageId, 3);
+          // 점수 0.45 이상이며 현재 페이지와 제목이 다른 경우만 표시
+          setAiSuggestions(results.filter(r => r.score > 0.45));
+        } else {
+          setAiSuggestions([]);
+        }
+      }, 3500);
     });
     return () => {
       unsubscribe?.();
       if (indexTimerRef.current) clearTimeout(indexTimerRef.current);
+      if (aiSuggestTimerRef.current) clearTimeout(aiSuggestTimerRef.current);
     };
   }, [editor, pageId]);
+
+  // Initialize block content tracking on first document load
+  useEffect(() => {
+    if (editor && lastBlockContentRef.current.size === 0 && editor.document.length > 0) {
+      const initialMap = new Map<string, string>();
+      editor.document.forEach(block => {
+        const text = Array.isArray(block.content) ? block.content.map((c: any) => c.text ?? '').join('') : '';
+        initialMap.set(block.id, text);
+      });
+      lastBlockContentRef.current = initialMap;
+    }
+  }, [editor]);
 
   // ── Custom :: block drag ────────────────────────────────────────────────
   // Replaces BlockNote's native HTML5 drag (unreliable in Tauri WebView2)
@@ -546,39 +623,90 @@ const CollaborativeEditor = ({ provider, currentTheme, workspaceTheme, onAddSubP
       </BlockNoteView>
 
       {/* Block action toolbar — appears after drag-select */}
-      {selectedIds.size > 0 && (
-        <div style={{
-          position: 'fixed', bottom: 28, left: '50%', transform: 'translateX(-50%)',
-          background: '#2f2f2f', color: '#fff', borderRadius: 8,
-          padding: '8px 14px', display: 'flex', alignItems: 'center', gap: 10,
-          boxShadow: '0 4px 20px rgba(0,0,0,0.25)', zIndex: 300, fontSize: 13,
-          animation: 'slideUpFade 0.15s ease-out forwards',
-        }}>
-          <span style={{ color: 'rgba(255,255,255,0.7)', fontSize: 12 }}>
-            {selectedIds.size}개 블록 선택됨
-          </span>
-          <div style={{ width: 1, height: 16, background: 'rgba(255,255,255,0.2)' }} />
-          <button
-            onClick={() => {
-              const blocks = editor.document.filter((b: { id: string }) => selectedIds.has(b.id));
-              if (blocks.length > 0) editor.removeBlocks(blocks);
-              clearSelection();
-            }}
-            style={{ background: 'rgba(235,87,87,0.25)', border: 'none', color: '#ff8080', padding: '4px 10px', borderRadius: 4, cursor: 'pointer', fontSize: 12, fontWeight: 500 }}
-          >
-            삭제
-          </button>
-          <button
-            onClick={clearSelection}
-            style={{ background: 'transparent', border: 'none', color: 'rgba(255,255,255,0.45)', padding: '4px 6px', cursor: 'pointer', fontSize: 16, lineHeight: 1 }}
-          >
-            ✕
-          </button>
-        </div>
-      )}
-    </div>
-  );
-};
+       {selectedIds.size > 0 && (
+         <div style={{
+           position: 'fixed', bottom: 28, left: '50%', transform: 'translateX(-50%)',
+           background: '#2f2f2f', color: '#fff', borderRadius: 8,
+           padding: '8px 14px', display: 'flex', alignItems: 'center', gap: 10,
+           boxShadow: '0 4px 20px rgba(0,0,0,0.25)', zIndex: 300, fontSize: 13,
+           animation: 'slideUpFade 0.15s ease-out forwards',
+         }}>
+           <span style={{ color: 'rgba(255,255,255,0.7)', fontSize: 12 }}>
+             {selectedIds.size}개 블록 선택됨
+           </span>
+           <div style={{ width: 1, height: 16, background: 'rgba(255,255,255,0.2)' }} />
+           <button
+             onClick={() => {
+               const blocks = editor.document.filter((b: { id: string }) => selectedIds.has(b.id));
+               if (blocks.length > 0) editor.removeBlocks(blocks);
+               clearSelection();
+             }}
+             style={{ background: 'rgba(235,87,87,0.25)', border: 'none', color: '#ff8080', padding: '4px 10px', borderRadius: 4, cursor: 'pointer', fontSize: 12, fontWeight: 500 }}
+           >
+             삭제
+           </button>
+           <button
+             onClick={clearSelection}
+             style={{ background: 'transparent', border: 'none', color: 'rgba(255,255,255,0.45)', padding: '4px 6px', cursor: 'pointer', fontSize: 16, lineHeight: 1 }}
+           >
+             ✕
+           </button>
+         </div>
+       )}
+
+       {/* AI Proactive Suggestions (Stage 1.2) */}
+       {aiSuggestions.length > 0 && (
+         <div style={{
+           position: 'absolute', bottom: 24, left: 24, zIndex: 100,
+           background: 'var(--bg-surface)', border: '1px solid var(--border-color)',
+           borderRadius: 12, padding: '14px', boxShadow: '0 12px 32px rgba(0,0,0,0.18)',
+           width: 280, animation: 'slideUpFade 0.25s ease-out',
+           display: 'flex', flexDirection: 'column', gap: 10
+         }}>
+           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+             <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, fontWeight: 700, color: 'var(--accent)', letterSpacing: '0.05em' }}>
+               <Sparkles size={14} /> <span>COFLUX ARCHITECT INSIGHT</span>
+             </div>
+             <button 
+               onClick={() => setAiSuggestions([])}
+               style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)' }}
+             >
+               <Plus size={14} style={{ transform: 'rotate(45deg)' }} />
+             </button>
+           </div>
+           
+           <div style={{ fontSize: '12.5px', color: 'var(--text-secondary)', lineHeight: 1.4 }}>
+             작성 중인 내용과 연관된 과거 기록이 있습니다. 링크를 추가할까요?
+           </div>
+
+           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+             {aiSuggestions.map(s => (
+               <div 
+                 key={s.page_id} 
+                 onClick={() => {
+                   editor.insertInlineContent([{ type: 'text', text: `[[${s.title}]]`, styles: {} }]);
+                   setAiSuggestions([]);
+                 }}
+                 style={{
+                   padding: '8px 10px', borderRadius: 8, background: 'var(--bg-secondary)',
+                   fontSize: '13px', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', 
+                   alignItems: 'center', border: '1px solid transparent', transition: 'all 0.1s'
+                 }}
+                 onMouseEnter={(e) => (e.currentTarget.style.borderColor = 'var(--accent)')}
+                 onMouseLeave={(e) => (e.currentTarget.style.borderColor = 'transparent')}
+               >
+                 <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: 500 }}>
+                   {s.title}
+                 </span>
+                 <Plus size={14} color="var(--accent)" />
+               </div>
+             ))}
+           </div>
+         </div>
+       )}
+     </div>
+   );
+ };
 
 export const Canvas = ({
   currentTheme,

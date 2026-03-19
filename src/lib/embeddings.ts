@@ -12,6 +12,12 @@ export interface LinkPageInfo {
   icon: string;
 }
 
+export interface RelatedPage {
+  page_id: string;
+  title: string;
+  score: number;
+}
+
 /**
  * 페이지를 백그라운드에서 임베딩 인덱싱합니다.
  * OpenAI 키가 없으면 서버에서 0을 반환하고 조용히 스킵됩니다.
@@ -22,6 +28,39 @@ export async function indexPage(pageId: string, title: string, content: string):
   } catch (e) {
     console.warn('[Embeddings] indexPage 실패:', e);
     return 0;
+  }
+}
+
+/**
+ * 단일 블록의 임베딩을 업데이트합니다.
+ */
+export async function updateBlockEmbedding(pageId: string, blockId: string, text: string): Promise<void> {
+  try {
+    await invoke('coflux_update_block_embedding', { pageId, blockId, text });
+  } catch (e) {
+    console.warn('[Embeddings] updateBlockEmbedding 실패:', e);
+  }
+}
+
+/**
+ * 여러 블록의 임베딩을 한 번에 삭제합니다.
+ */
+export async function deleteBlockEmbeddings(pageId: string, blockIds: string[]): Promise<void> {
+  try {
+    await invoke('coflux_delete_block_embeddings', { pageId, blockIds });
+  } catch (e) {
+    console.warn('[Embeddings] deleteBlockEmbeddings 실패:', e);
+  }
+}
+
+/**
+ * 텍스트에서 위키링크를 파싱하여 백엔드 DB를 업데이트합니다.
+ */
+export async function updateWikiLinks(pageId: string, text: string): Promise<void> {
+  try {
+    await invoke('coflux_update_wiki_links', { pageId, text });
+  } catch (e) {
+    console.warn('[Embeddings] updateWikiLinks 실패:', e);
   }
 }
 
@@ -76,12 +115,22 @@ export async function addManualLink(sourceId: string, targetId: string): Promise
     console.warn('[Embeddings] addManualLink 실패:', e);
   }
 }
-
-/** 지식 맵 수동 노드 엣지 삭제 */
-export async function removeManualLink(sourceId: string, targetId: string): Promise<void> {
-  try {
-    await invoke('coflux_remove_manual_link', { sourceId, targetId });
-  } catch (e) {
-    console.warn('[Embeddings] removeManualLink 실패:', e);
-  }
-}
+ 
+ /** 지식 맵 수동 노드 엣지 삭제 */
+ export async function removeManualLink(sourceId: string, targetId: string): Promise<void> {
+   try {
+     await invoke('coflux_remove_manual_link', { sourceId, targetId });
+   } catch (e) {
+     console.warn('[Embeddings] removeManualLink 실패:', e);
+   }
+ }
+ 
+ /** 현재 텍스트와 연관된 페이지들을 찾아 반환합니다. (페이지 단위) */
+ export async function findRelatedPages(text: string, currentPageId?: string, limit = 3): Promise<RelatedPage[]> {
+   try {
+     return await invoke<RelatedPage[]>('coflux_find_related_pages', { text, currentPageId, limit });
+   } catch (e) {
+     console.warn('[Embeddings] findRelatedPages 실패:', e);
+     return [];
+   }
+ }
