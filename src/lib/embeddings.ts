@@ -150,3 +150,18 @@ export async function getAllPageEmbeddings(): Promise<PageEmbedding[]> {
     return [];
   }
 }
+
+export interface PageActivity {
+  page_id: string;
+  score: number;
+}
+
+/** 모든 페이지의 활동성 점수를 가져옵니다. (히트맵용) */
+export async function getKnowledgeActivity(): Promise<PageActivity[]> {
+  try {
+    return await invoke<PageActivity[]>('coflux_get_knowledge_activity');
+  } catch (e) {
+    console.warn('[Embeddings] getKnowledgeActivity 실패:', e);
+    return [];
+  }
+}

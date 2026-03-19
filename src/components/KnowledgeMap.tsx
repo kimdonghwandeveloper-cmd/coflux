@@ -19,7 +19,7 @@ import '@xyflow/react/dist/style.css';
 import dagre from '@dagrejs/dagre';
 import { PageData } from '../App';
 import { getAllLinks, addManualLink, removeManualLink, getAllPageEmbeddings, PageEmbedding } from '../lib/embeddings';
-import { Brain, Network, X, GitBranch } from 'lucide-react';
+import { Brain, Network, X } from 'lucide-react';
 
 // ─── Dagre 자동 레이아웃 ─────────────────────────────────────────────────────
 

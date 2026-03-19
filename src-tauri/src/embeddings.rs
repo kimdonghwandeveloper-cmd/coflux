@@ -572,3 +572,53 @@ pub async fn coflux_get_all_page_embeddings() -> Result<Vec<PageEmbedding>, Stri
 
     Ok(results)
 }
+
+/// 페이지별 활동 지수(Activity Score)를 산출하여 반환합니다.
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct PageActivity {
+    pub page_id: String,
+    pub score: f32, // 0.0 ~ 1.0
+}
+
+#[tauri::command]
+pub async fn coflux_get_knowledge_activity() -> Result<Vec<PageActivity>, String> {
+    let guard = DB_CONN.lock().map_err(|e| e.to_string())?;
+    let conn = guard.as_ref().ok_or("DB not initialized")?;
+
+    // 1. 모든 페이지 가져오기
+    let mut stmt = conn.prepare("SELECT id, updated_at FROM pages WHERE (is_deleted IS NULL OR is_deleted = 0)")
+        .map_err(|e| e.to_string())?;
+    let pages: Vec<(String, String)> = stmt.query_map([], |row| Ok((row.get(0)?, row.get(1)?)))
+        .map_err(|e| e.to_string())?
+        .filter_map(|r| r.ok())
+        .collect();
+
+    let mut activities = Vec::new();
+    let mut max_edits = 1.0f32;
+
+    for (page_id, updated_at) in pages {
+        // 2. 수정 횟수 (yjs_updates count)
+        let edit_count: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM yjs_updates WHERE page_id = ?1",
+            params![page_id],
+            |row| row.get(0),
+        ).unwrap_or(0);
+        
+        if (edit_count as f32) > max_edits {
+            max_edits = edit_count as f32;
+        }
+
+        // 3. 최근성 점수 (간단하게 updated_at 문자열 기반 처리)
+        // 실제로는 chrono 파싱이 좋으나, 여기선 러프하게 처리하거나 단순히 무시하고 edit_count 위주로 우선 구현
+        
+        activities.push((page_id, edit_count as f32));
+    }
+
+    // 4. 정규화 및 최종 점수 산출
+    let results = activities.into_iter().map(|(id, count)| {
+        let score = (count / max_edits).min(1.0);
+        PageActivity { page_id: id, score }
+    }).collect();
+
+    Ok(results)
+}
