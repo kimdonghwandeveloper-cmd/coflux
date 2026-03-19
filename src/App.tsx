@@ -132,13 +132,14 @@ function App() {
       }
 
       // 4. Auth State Change Listener
-      const { data } = supabase.auth.onAuthStateChange(async (_event, session) => {
-        if (session?.user) {
-          const { data: dbUser } = await supabase
-            .from('users')
-            .select('tier, stripe_customer_id')
-            .eq('id', session.user.id)
-            .single();
+      const { data } = supabase.auth.onAuthStateChange((_event, session) => {
+        (async () => {
+          if (session?.user) {
+            const { data: dbUser } = await supabase
+              .from('users')
+              .select('tier, stripe_customer_id')
+              .eq('id', session.user.id)
+              .single();
 
           const profile: UserProfile = {
             id: session.user.id,
@@ -162,6 +163,7 @@ function App() {
           }
           setShowLoginPrompt(true);
         }
+        })();
       });
       authSubscription = data.subscription;
 
