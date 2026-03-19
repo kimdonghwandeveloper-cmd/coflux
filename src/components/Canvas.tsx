@@ -22,9 +22,9 @@ import { RiFileLine } from 'react-icons/ri';
 // CSS classes used across drag and selection interactions.
 // Keeping them as constants prevents typo-induced silent failures.
 const CLS = {
-  DRAG_ACTIVE:   'block-drag-active',   // applied while a block is being dragged
-  SELECTING:     'block-selecting',     // applied during range-select (outlines + no text-select)
-  BLOCK_SEL:     'bn-block-selected',   // applied to individually highlighted blocks
+  DRAG_ACTIVE: 'block-drag-active',   // applied while a block is being dragged
+  SELECTING: 'block-selecting',     // applied during range-select (outlines + no text-select)
+  BLOCK_SEL: 'bn-block-selected',   // applied to individually highlighted blocks
 } as const;
 
 // Returns the deepest [data-id] block element whose bounding rect contains clientY.
@@ -56,14 +56,14 @@ function buildBlockNoteTheme(t: WorkspaceTheme) {
   const c = t.colors;
   return {
     colors: {
-      editor:   { text: c.textPrimary,   background: c.bgPrimary },
-      menu:     { text: c.textPrimary,   background: c.bgSurface },
-      tooltip:  { text: c.textPrimary,   background: c.bgSecondary },
-      hovered:  { text: c.textPrimary,   background: c.bgSecondary },
-      selected: { text: c.textPrimary,   background: c.bgSecondary },
+      editor: { text: c.textPrimary, background: c.bgPrimary },
+      menu: { text: c.textPrimary, background: c.bgSurface },
+      tooltip: { text: c.textPrimary, background: c.bgSecondary },
+      hovered: { text: c.textPrimary, background: c.bgSecondary },
+      selected: { text: c.textPrimary, background: c.bgSecondary },
       disabled: { text: c.textSecondary, background: c.bgSecondary },
-      shadow:   'rgba(0,0,0,0.15)',
-      border:   c.borderColor,
+      shadow: 'rgba(0,0,0,0.15)',
+      border: c.borderColor,
       sideMenu: c.textSecondary,
     },
   } as const;
@@ -422,7 +422,7 @@ const CollaborativeEditor = ({ provider, currentTheme, workspaceTheme, onAddSubP
   // 디버깅용: 에디터 인스턴스 자체의 협업 상태 확인
   useEffect(() => {
     if (editor) {
-      console.log('[Editor] Instance ready. Collaboration info:', (editor as any).collaboration);
+      // Instance ready
     }
   }, [editor]);
 
@@ -431,46 +431,34 @@ const CollaborativeEditor = ({ provider, currentTheme, workspaceTheme, onAddSubP
 
   // Yjs UndoManager for Ctrl+Z / Ctrl+Y (ProseMirror history is disabled in collab mode)
   useEffect(() => {
-    console.log('[UndoManager Effect] START. Provider ID:', provider?.doc.guid || 'NULL');
-
     if (!provider) {
-      console.log('[UndoManager Effect] No provider, skipping.');
       if (undoManagerRef.current) {
         undoManagerRef.current.destroy();
         undoManagerRef.current = null;
       }
       return;
     }
-    
+
     const doc = provider.doc;
-    const fragment = doc.getXmlFragment("blocknote");
-    
+
     // 이전에 생성된 매니저가 다른 도큐먼트를 보고 있다면 파괴하고 새로 생성
     if (undoManagerRef.current && undoManagerRef.current.doc !== doc) {
-      console.log('[UndoManager] Document changed. Old Doc:', undoManagerRef.current.doc.guid, 'New Doc:', doc.guid);
       undoManagerRef.current.destroy();
       undoManagerRef.current = null;
     }
 
     if (!undoManagerRef.current) {
-      console.log('[UndoManager] Initializing NEW Super-Tracker for current doc:', doc.guid);
-      undoManagerRef.current = new Y.UndoManager(doc, { 
+      undoManagerRef.current = new Y.UndoManager(doc, {
         captureTimeout: 500,
         ignoreRemoteMapChanges: false,
       });
 
-      undoManagerRef.current.on('stack-item-added', (event) => {
+      undoManagerRef.current.on('stack-item-added', () => {
         console.log('[UndoManager] SUCCESS! Stack grown. Size:', undoManagerRef.current?.undoStack.length);
       });
     }
 
     const um = undoManagerRef.current;
-
-    // 상세 트랜잭션 분석 로그 다시 활성화
-    const onTransaction = (tr: Y.Transaction) => {
-      console.log('[Yjs Transaction] Origin:', tr.origin, 'Local:', tr.local);
-    };
-    doc.on('transaction', onTransaction);
 
     const handleKeyDown = (e: KeyboardEvent) => {
       const isZ = e.code === 'KeyZ';
@@ -481,8 +469,9 @@ const CollaborativeEditor = ({ provider, currentTheme, workspaceTheme, onAddSubP
       if (!isCtrl) return;
 
       const target = e.target as HTMLElement;
-      const isInsideEditor = !!target.closest('.bn-container') || !!target.closest('.bn-editor') || target === document.body;
-      if (!isInsideEditor) return;
+      // Allow undo/redo globally within the Canvas component (including Title, etc.)
+      const isInsideCanvas = !!target.closest('.app-container') || target === document.body;
+      if (!isInsideCanvas) return;
 
       // Undo: Ctrl + Z
       if (isZ && !isShift) {
@@ -505,7 +494,6 @@ const CollaborativeEditor = ({ provider, currentTheme, workspaceTheme, onAddSubP
     window.addEventListener('keydown', handleKeyDown, { capture: true });
     return () => {
       window.removeEventListener('keydown', handleKeyDown, { capture: true });
-      doc.off('transaction', onTransaction);
     };
   }, [provider]);
 
@@ -514,7 +502,7 @@ const CollaborativeEditor = ({ provider, currentTheme, workspaceTheme, onAddSubP
     const defaults = getDefaultReactSlashMenuItems(ed).filter(
       item => !["Heading 4", "Heading 5", "Heading 6"].includes(item.title)
     );
-    
+
     const pageItem = {
       title: "Page",
       onItemClick: () => { onAddSubPage(); },
@@ -624,7 +612,7 @@ export const Canvas = ({
   const [showNetwork, setShowNetwork] = useState(false);
   const [remoteSdp, setRemoteSdp] = useState('');
   const [localTitle, setLocalTitle] = useState(activePage.title);
-  
+
   // E27: 페이지 제목 색상 지정 Popover
   const [showTitleConfig, setShowTitleConfig] = useState(false);
   const [isTitleHovered, setIsTitleHovered] = useState(false);
@@ -642,7 +630,7 @@ export const Canvas = ({
     pink: { text: '#c14c8a', bg: 'rgba(193, 76, 138, 0.15)', darkText: '#d15796', darkBg: 'rgba(209, 87, 150, 0.15)' },
   };
 
-  const getHighlightColor = (type: 'text'|'bg', color: string | null | undefined) => {
+  const getHighlightColor = (type: 'text' | 'bg', color: string | null | undefined) => {
     if (!color) return type === 'text' ? 'var(--auto-text-color)' : 'transparent';
     const mapped = HIGHLIGHT_COLORS[color];
     if (!mapped) return type === 'text' ? 'var(--auto-text-color)' : 'transparent';
@@ -666,13 +654,13 @@ export const Canvas = ({
   // Keep local title in sync with prop when page changes
   useEffect(() => {
     setLocalTitle(activePage.title);
-    getBacklinks(activePage.id).then(setBacklinks).catch(() => {});
+    getBacklinks(activePage.id).then(setBacklinks).catch(() => { });
   }, [activePage.id, activePage.title]);
 
   // Initialize Y.Doc directly from SQLite Rust Database (Local Persistence)
   useEffect(() => {
     let currentYdoc: Y.Doc | null = null;
-    
+
     const initYjs = async () => {
       const ydoc = new Y.Doc();
       currentYdoc = ydoc;
@@ -690,17 +678,17 @@ export const Canvas = ({
       // Listen for future updates and auto-save them
       ydoc.on('update', async (update: Uint8Array) => {
         try {
-          await invoke('save_yjs_update', { 
-            pageId: activePage.id, 
-            updateBlob: Array.from(update) 
+          await invoke('save_yjs_update', {
+            pageId: activePage.id,
+            updateBlob: Array.from(update)
           });
         } catch (e) {
           console.error("Failed to save Yjs update:", e);
         }
       });
-      
+
       const awareness = new Awareness(ydoc);
-      
+
       const mockProvider = {
         doc: ydoc,
         awareness,
@@ -713,10 +701,10 @@ export const Canvas = ({
         off: (event: string, handler: any) => {
           ydoc.off(event as any, handler);
         },
-        emit: (event: string, ...args: any[]) => {},
-        destroy: () => {},
-        connect: () => {},
-        disconnect: () => {},
+        emit: (_event: string, ..._args: any[]) => { },
+        destroy: () => { },
+        connect: () => { },
+        disconnect: () => { },
       };
 
       awareness.setLocalStateField('user', {
@@ -733,7 +721,7 @@ export const Canvas = ({
 
       setProvider(mockProvider);
     };
-    
+
     initYjs();
     return () => {
       if (currentYdoc) currentYdoc.destroy();
@@ -754,7 +742,7 @@ export const Canvas = ({
         unlistenConn = await listen<string>('webrtc-state', (event) => {
           setConnState(event.payload);
         });
-      } catch {}
+      } catch { }
     })();
 
     return () => { unlisten?.(); unlistenConn?.(); };
@@ -840,13 +828,13 @@ export const Canvas = ({
             {/* Step 2: Accept Remote SDP */}
             <div style={{ height: '1px', background: 'var(--border-color)', margin: '2px 0' }} />
             <div style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Step 2: Accept Remote SDP</div>
-            
-            <textarea 
+
+            <textarea
               value={remoteSdp}
               onChange={e => setRemoteSdp(e.target.value)}
               placeholder="Paste the other peer's Offer or Answer SDP here..."
               style={{ width: '100%', height: '60px', fontSize: '9px', padding: '6px', borderRadius: '4px', border: '1px solid var(--border-color)', background: 'var(--bg-secondary)', color: 'var(--text-primary)', resize: 'none', fontFamily: 'monospace' }} />
-            
+
             <button className="notion-btn primary" style={{ width: '100%', justifyContent: 'center', fontSize: '12px' }}
               onClick={async () => {
                 const sdp = remoteSdp.trim();
@@ -934,7 +922,7 @@ export const Canvas = ({
         )}
 
         {/* E27: Title Input & Color Picker */}
-        <div 
+        <div
           style={{ position: 'relative', display: 'flex', alignItems: 'center', marginBottom: '12px' }}
           onMouseEnter={() => setIsTitleHovered(true)}
           onMouseLeave={() => setIsTitleHovered(false)}
@@ -944,7 +932,7 @@ export const Canvas = ({
             onChange={e => setLocalTitle(e.target.value)}
             onBlur={() => {
               if (localTitle !== activePage.title) {
-                onUpdatePage({...activePage, title: localTitle});
+                onUpdatePage({ ...activePage, title: localTitle });
               }
             }}
             onKeyDown={e => {
@@ -954,37 +942,37 @@ export const Canvas = ({
             }}
             placeholder="Page Title"
             className="page-title"
-            style={{ 
-              fontSize: '40px', fontWeight: 700, letterSpacing: '-0.02em', outline: 'none', 
-              color: getHighlightColor('text', activePage.titleColor), 
-              background: getHighlightColor('bg', activePage.titleBgColor), 
+            style={{
+              fontSize: '40px', fontWeight: 700, letterSpacing: '-0.02em', outline: 'none',
+              color: getHighlightColor('text', activePage.titleColor),
+              background: getHighlightColor('bg', activePage.titleBgColor),
               border: 'none', width: '100%', fontFamily: 'inherit',
               padding: activePage.titleBgColor ? '0 12px' : '0',
               borderRadius: '8px', transition: 'all 0.2s ease', marginLeft: activePage.titleBgColor ? '-12px' : '0'
-            }} 
+            }}
           />
-          
-          <div 
+
+          <div
             style={{ position: 'absolute', right: 0, opacity: (isTitleHovered || showTitleConfig) ? 1 : 0, transition: 'opacity 0.2s ease', zIndex: 60 }}
           >
-            <button 
-              className="notion-btn" 
+            <button
+              className="notion-btn"
               style={{ padding: '6px', background: 'transparent', border: 'none', color: 'var(--text-secondary)' }}
               onClick={() => setShowTitleConfig(!showTitleConfig)}
             >
               <Palette size={20} />
             </button>
-            
+
             {showTitleConfig && (
               <div style={{ position: 'absolute', top: '100%', right: 0, marginTop: '8px', background: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '8px', boxShadow: '0 4px 16px rgba(0,0,0,0.15)', padding: '12px', width: '220px', zIndex: 100, display: 'flex', flexDirection: 'column', gap: '16px', animation: 'slideUpFade 0.15s ease-out forwards' }}>
                 <div>
                   <div style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', marginBottom: '8px', letterSpacing: '0.5px' }}>Text Color</div>
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '6px' }}>
                     {titleColors.map(c => (
-                      <div key={`t-${c.value}`} 
-                           onClick={() => { onUpdatePage({...activePage, titleColor: c.value }); }}
-                           title={c.label}
-                           style={{ width: '26px', height: '26px', borderRadius: '50%', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid var(--border-color)', background: getHighlightColor('text', c.value) }}
+                      <div key={`t-${c.value}`}
+                        onClick={() => { onUpdatePage({ ...activePage, titleColor: c.value }); }}
+                        title={c.label}
+                        style={{ width: '26px', height: '26px', borderRadius: '50%', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid var(--border-color)', background: getHighlightColor('text', c.value) }}
                       >
                         {activePage.titleColor === c.value && <Check size={14} color="var(--bg-primary)" />}
                       </div>
@@ -995,10 +983,10 @@ export const Canvas = ({
                   <div style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', marginBottom: '8px', letterSpacing: '0.5px' }}>Background Color</div>
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '6px' }}>
                     {titleColors.map(c => (
-                      <div key={`b-${c.value}`} 
-                           onClick={() => { onUpdatePage({...activePage, titleBgColor: c.value }); }}
-                           title={c.label}
-                           style={{ width: '26px', height: '26px', borderRadius: '4px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid var(--border-color)', background: getHighlightColor('bg', c.value) }}
+                      <div key={`b-${c.value}`}
+                        onClick={() => { onUpdatePage({ ...activePage, titleBgColor: c.value }); }}
+                        title={c.label}
+                        style={{ width: '26px', height: '26px', borderRadius: '4px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid var(--border-color)', background: getHighlightColor('bg', c.value) }}
                       >
                         {activePage.titleBgColor === c.value && <Check size={14} color="var(--text-primary)" />}
                       </div>
@@ -1009,7 +997,7 @@ export const Canvas = ({
             )}
           </div>
         </div>
-        
+
         <div style={{ fontSize: '13px', color: 'var(--text-secondary)', marginBottom: '32px', display: 'flex', alignItems: 'center', gap: '12px' }}>
           <span>Updated {activePage.updatedAt}</span>
           {memberCount > 1 && (
