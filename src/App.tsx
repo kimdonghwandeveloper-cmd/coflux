@@ -131,15 +131,14 @@ function App() {
         console.error('[DeepLink] Setup failed:', e);
       }
 
-      // 4. Auth State Change Listener
-      const { data } = supabase.auth.onAuthStateChange((_event, session) => {
-        (async () => {
-          if (session?.user) {
-            const { data: dbUser } = await supabase
-              .from('users')
-              .select('tier, stripe_customer_id')
-              .eq('id', session.user.id)
-              .single();
+      // 4. Auth State Change Listener (E28: CI/CD 빌드 호환성 최적화)
+      const handleAuth = async (_evt: any, session: any) => {
+        if (session?.user) {
+          const { data: dbUser } = await supabase
+            .from('users')
+            .select('tier, stripe_customer_id')
+            .eq('id', session.user.id)
+            .single();
 
           const profile: UserProfile = {
             id: session.user.id,
@@ -163,9 +162,12 @@ function App() {
           }
           setShowLoginPrompt(true);
         }
-        })();
+      };
+
+      const { data: authStateData } = supabase.auth.onAuthStateChange((event: any, session: any) => {
+        handleAuth(event, session);
       });
-      authSubscription = data.subscription;
+      authSubscription = authStateData.subscription;
 
       setIsAuthLoading(false);
     };
