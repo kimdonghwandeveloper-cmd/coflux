@@ -11,9 +11,13 @@ let nextVersion = process.argv[2];
 
 // 2. Default to patch bump if no version provided (e.g., 0.1.1 -> 0.1.2)
 if (!nextVersion) {
-  const parts = pkg.version.split('.').map(Number);
-  parts[2] += 1;
-  nextVersion = parts.join('.');
+  let [major, minor, patch] = pkg.version.split('.').map(Number);
+  patch += 1;
+  if (patch > 10) {
+    minor += 1;
+    patch = 1;
+  }
+  nextVersion = [major, minor, patch].join('.');
 }
 
 console.log(`\n🚀 Preparing release for v${nextVersion}...`);
