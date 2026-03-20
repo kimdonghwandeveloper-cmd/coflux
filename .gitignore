@@ -31,6 +31,8 @@ src-tauri/target/
 src-tauri/compile.log
 src-tauri/clippy_report.txt
 src-tauri/build_log.txt
+*.key
+*.pub
 
 # AI Artifacts & Environment
 .gemini/

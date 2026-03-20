@@ -44,7 +44,7 @@
       "endpoints": [
         "https://github.com/karl3/coflux/releases/latest/download/latest.json"
       ],
-      "pubkey": "CONTENT_TO_BE_REPLACED_BY_USER_GENERATED_KEY"
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDMwMTQxQzczMDFFRUYwMUUKUldRZThPNEJjeHdVTUl6dnRCaVRRVWc3QUR4OEEycmFYcTI1dTAwb0x2b1hPZWxvQkhlTTV4aEgK"
     }
   }
 }
