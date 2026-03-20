@@ -207,9 +207,15 @@ pub async fn coflux_external_api_call(
     provider: String,
     prompt: String,
 ) -> Result<String, String> {
-    let api_key = decrypt_api_key(&app, &provider)?;
     let config = coflux_get_provider_config(provider.clone())?;
     let preferred_model = config["preferred_model"].as_str();
+
+    // Ollama는 API 키가 필요 없을 수 있으므로 여기서 분기
+    let api_key = if provider == "ollama" {
+        "".to_string()
+    } else {
+        decrypt_api_key(&app, &provider)?
+    };
     
     let client = reqwest::Client::new();
     let sys_prompt = get_system_prompt();
@@ -307,6 +313,40 @@ pub async fn coflux_external_api_call(
                 .as_str()
                 .map(String::from)
                 .ok_or_else(|| format!("Google Gemini 응답 구조 오류: {json}"))
+        }
+        "ollama" => {
+            let model = preferred_model.unwrap_or("llama3:8b");
+            let base_url = crate::db_core::coflux_get_setting("ollama_base_url".to_string()).unwrap_or("http://localhost:11434".to_string());
+            let url = format!("{}/api/chat", base_url.trim_end_matches('/'));
+            
+            let body = serde_json::json!({
+                "model": model,
+                "messages": [
+                    { "role": "system", "content": sys_prompt },
+                    { "role": "user", "content": prompt }
+                ],
+                "stream": false
+            });
+
+            let res = client
+                .post(&url)
+                .json(&body)
+                .send()
+                .await
+                .map_err(|e| format!("Ollama 요청 실패 (Ollama가 켜져 있나요?): {e}"))?;
+
+            if !res.status().is_success() {
+                let status = res.status();
+                let text = res.text().await.unwrap_or_default();
+                return Err(format!("Ollama 오류 {status}: {text}"));
+            }
+
+            let json: serde_json::Value =
+                res.json().await.map_err(|e| format!("Ollama 응답 파싱 실패: {e}"))?;
+            json["message"]["content"]
+                .as_str()
+                .map(String::from)
+                .ok_or_else(|| format!("Ollama 응답 구조 오류: {json}"))
         }
         other => Err(format!(
             "지원하지 않는 provider: '{other}'. 'openai', 'anthropic' 또는 'google'을 사용하세요."

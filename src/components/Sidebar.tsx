@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { Plus, Settings, Moon, Sun, MoreHorizontal, Star, Trash2, ChevronDown, ChevronRight, RotateCcw, X, GripVertical } from 'lucide-react';
+import { Plus, Settings, Moon, Sun, MoreHorizontal, Star, Trash2, ChevronDown, ChevronRight, RotateCcw, X, GripVertical, Sparkles } from 'lucide-react';
 import { PageData, WorkspaceData } from '../App';
 import { TOGGLE_THEME_IDS } from '../lib/theme';
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, DragEndEvent, DragStartEvent, DragOverlay } from '@dnd-kit/core';
@@ -248,6 +248,25 @@ export const Sidebar = ({
             </div>
           </div>
         )}
+      </div>
+      
+      {/* AI Insights Card */}
+      <div style={{ padding: '0 16px 20px', animation: 'fadeIn 0.5s ease-out' }}>
+        <div style={{ 
+          background: 'linear-gradient(135deg, var(--bg-surface) 0%, var(--bg-secondary) 100%)', 
+          borderRadius: '12px', border: '1px solid var(--border-color)', padding: '12px',
+          boxShadow: '0 4px 12px rgba(0,0,0,0.05)'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '11px', fontWeight: 700, color: 'var(--accent)', letterSpacing: '0.05em', marginBottom: '8px' }}>
+            <Sparkles size={12} /> <span>COFLUX INSIGHTS</span>
+          </div>
+          <div style={{ fontSize: '12px', color: 'var(--text-primary)', fontWeight: 600, marginBottom: '4px' }}>
+            {pages.length > 5 ? `${pages.length}개의 지식이 연결되어 있습니다.` : '새로운 지식을 연결해보세요!'}
+          </div>
+          <div style={{ fontSize: '11px', color: 'var(--text-secondary)', lineHeight: 1.4 }}>
+            {activePageId ? '현재 페이지를 분석하여 새로운 인사이트를 도출할 준비가 되었습니다.' : '지난주보다 활동성이 15% 증가했습니다. 꾸준한 기록을 응원합니다!'}
+          </div>
+        </div>
       </div>
 
       <div style={{ flex: 1, overflowY: 'auto' }}>

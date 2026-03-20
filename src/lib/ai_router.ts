@@ -3,13 +3,14 @@ import { z } from 'zod';
 
 // ─── BYOK API 키 관리 ────────────────────────────────────────────────────────
 
-export type Provider = 'openai' | 'anthropic' | 'google';
+export type Provider = 'openai' | 'anthropic' | 'google' | 'ollama';
 
 export async function registerApiKey(provider: Provider, apiKey: string): Promise<void> {
   await invoke('coflux_register_api_key', { provider, apiKey });
 }
 
 export async function hasApiKey(provider: Provider): Promise<boolean> {
+  if (provider === 'ollama') return true; // Ollama doesn't need a key
   return invoke<boolean>('coflux_has_api_key', { provider });
 }
 
@@ -73,8 +74,19 @@ export const routeAiTask = async (payload: AiPayload): Promise<AiResponse> => {
   const validData = AiPayloadSchema.parse(payload);
 
   if (validData.externalAllowed) {
-    // openai 우선, 없으면 anthropic, 그 다음 google 시도
-    for (const provider of ['openai', 'anthropic', 'google'] as Provider[]) {
+    // ai_provider 설정을 먼저 확인하거나, 우선순위대로 시도
+    let preferredProvider: Provider | null = null;
+    try {
+      preferredProvider = await invoke<Provider>('coflux_get_setting', { key: 'ai_provider' });
+    } catch (e) {
+      console.warn('ai_provider 설정을 가져오지 못했습니다. 기본 순서대로 진행합니다.');
+    }
+
+    const providers: Provider[] = preferredProvider 
+      ? [preferredProvider, 'openai', 'anthropic', 'google', 'ollama'].filter((v, i, a) => a.indexOf(v) === i) as Provider[]
+      : ['openai', 'anthropic', 'google', 'ollama'];
+
+    for (const provider of providers) {
       if (await hasApiKey(provider)) {
         try {
           const text = await externalApiCall(provider, validData.prompt);

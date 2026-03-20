@@ -164,6 +164,37 @@ pub(crate) async fn call_openai_embeddings(text: &str, api_key: &str) -> Result<
         .collect()
 }
 
+pub(crate) async fn call_ollama_embeddings(text: &str, base_url: &str, model: &str) -> Result<Vec<f32>, String> {
+    let _permit = EMBED_SEM.acquire().await.map_err(|e| e.to_string())?;
+    let client = reqwest::Client::new();
+    let url = format!("{}/api/embeddings", base_url.trim_end_matches('/'));
+    
+    let body = serde_json::json!({
+        "model": model,
+        "prompt": text,
+    });
+    
+    let resp = client
+        .post(&url)
+        .json(&body)
+        .send()
+        .await
+        .map_err(|e| format!("Ollama 임베딩 요청 실패: {e}"))?;
+
+    if !resp.status().is_success() {
+        let err = resp.text().await.unwrap_or_default();
+        return Err(format!("Ollama embeddings 오류: {err}"));
+    }
+
+    let json: serde_json::Value = resp.json().await.map_err(|e| e.to_string())?;
+    json["embedding"]
+        .as_array()
+        .ok_or("Ollama 임베딩 응답 구조 오류".to_string())?
+        .iter()
+        .map(|v| Ok(v.as_f64().unwrap_or(0.0) as f32))
+        .collect()
+}
+
 /// 페이지 텍스트를 청킹→임베딩→SQLite 저장합니다.
 /// OpenAI 키가 없으면 Ok(0)을 반환하고 조용히 스킵합니다.
 #[tauri::command]
@@ -173,40 +204,23 @@ pub async fn coflux_index_page(
     title: String,
     content: String,
 ) -> Result<usize, String> {
-    let api_key = match crate::api_keys::decrypt_key_internal(&app, "openai") {
-        Ok(k) => k,
-        Err(_) => return Ok(0), // OpenAI 키 없음 → 조용히 스킵
-    };
+    let provider = crate::db_core::coflux_get_setting("embedding_provider".to_string()).unwrap_or("openai".to_string());
+    let ollama_url = crate::db_core::coflux_get_setting("ollama_base_url".to_string()).unwrap_or("http://localhost:11434".to_string());
 
-    let full_text = if content.trim().is_empty() {
-        title.clone()
-    } else {
-        format!("{}\n{}", title, content)
-    };
-
-    if full_text.trim().is_empty() {
-        return Ok(0);
-    }
-
-    let chunks = chunk_text(&full_text, 400);
+    let chunks = chunk_text(&content, 1000);
     let chunk_count = chunks.len();
 
-    // 기존 임베딩 삭제
-    {
-        let guard = DB_CONN.lock().map_err(|e| e.to_string())?;
-        let conn = guard.as_ref().ok_or("DB not initialized")?;
-        conn.execute("DELETE FROM page_embeddings WHERE page_id = ?1", params![page_id])
-            .map_err(|e| e.to_string())?;
-    }
-
     for (i, chunk) in chunks.iter().enumerate() {
-        let embedding = match call_openai_embeddings(chunk, &api_key).await {
-            Ok(e) => e,
-            Err(e) => {
-                eprintln!("[Embeddings] chunk {i} 오류: {e}");
-                continue;
-            }
+        let embedding = if provider == "ollama" {
+            let config = crate::api_keys::coflux_get_provider_config("ollama".to_string()).unwrap_or(serde_json::json!({}));
+            let model = config["preferred_model"].as_str().unwrap_or("mxbai-embed-large");
+            call_ollama_embeddings(chunk, &ollama_url, model).await?
+        } else {
+            let api_key = crate::api_keys::decrypt_key_internal(&app, "openai")
+                .map_err(|_| "OpenAI API 키가 없습니다.".to_string())?;
+            call_openai_embeddings(chunk, &api_key).await?
         };
+
         let blob = embedding_to_blob(&embedding);
         let guard = DB_CONN.lock().map_err(|e| e.to_string())?;
         let conn = guard.as_ref().ok_or("DB not initialized")?;
@@ -260,11 +274,6 @@ pub async fn coflux_update_block_embedding(
     block_id: String,
     text: String,
 ) -> Result<(), String> {
-    let api_key = match crate::api_keys::decrypt_key_internal(&app, "openai") {
-        Ok(k) => k,
-        Err(_) => return Ok(()),
-    };
-
     if text.trim().is_empty() {
         let guard = DB_CONN.lock().map_err(|e| e.to_string())?;
         let conn = guard.as_ref().ok_or("DB not initialized")?;
@@ -275,7 +284,19 @@ pub async fn coflux_update_block_embedding(
         return Ok(());
     }
 
-    let embedding = call_openai_embeddings(&text, &api_key).await?;
+    let provider = crate::db_core::coflux_get_setting("embedding_provider".to_string()).unwrap_or("openai".to_string());
+    let ollama_url = crate::db_core::coflux_get_setting("ollama_base_url".to_string()).unwrap_or("http://localhost:11434".to_string());
+
+    let embedding = if provider == "ollama" {
+        let config = crate::api_keys::coflux_get_provider_config("ollama".to_string()).unwrap_or(serde_json::json!({}));
+        let model = config["preferred_model"].as_str().unwrap_or("mxbai-embed-large");
+        call_ollama_embeddings(&text, &ollama_url, model).await?
+    } else {
+        let api_key = crate::api_keys::decrypt_key_internal(&app, "openai")
+            .map_err(|_| "OpenAI API 키가 없습니다.".to_string())?;
+        call_openai_embeddings(&text, &api_key).await?
+    };
+
     let blob = embedding_to_blob(&embedding);
 
     let guard = DB_CONN.lock().map_err(|e| e.to_string())?;
@@ -316,10 +337,18 @@ pub async fn coflux_search_similar(
     query: String,
     limit: usize,
 ) -> Result<Vec<SearchResult>, String> {
-    let api_key = crate::api_keys::decrypt_key_internal(&app, "openai")
-        .map_err(|_| "OpenAI API 키가 없습니다.".to_string())?;
+    let provider = crate::db_core::coflux_get_setting("embedding_provider".to_string()).unwrap_or("openai".to_string());
+    let ollama_url = crate::db_core::coflux_get_setting("ollama_base_url".to_string()).unwrap_or("http://localhost:11434".to_string());
 
-    let query_embedding = call_openai_embeddings(&query, &api_key).await?;
+    let query_embedding = if provider == "ollama" {
+        let config = crate::api_keys::coflux_get_provider_config("ollama".to_string()).unwrap_or(serde_json::json!({}));
+        let model = config["preferred_model"].as_str().unwrap_or("mxbai-embed-large");
+        call_ollama_embeddings(&query, &ollama_url, model).await?
+    } else {
+        let api_key = crate::api_keys::decrypt_key_internal(&app, "openai")
+            .map_err(|_| "OpenAI API 키가 없습니다.".to_string())?;
+        call_openai_embeddings(&query, &api_key).await?
+    };
 
     let rows: Vec<(String, String, Vec<u8>)> = {
         let guard = DB_CONN.lock().map_err(|e| e.to_string())?;
@@ -357,10 +386,18 @@ pub async fn coflux_find_related_pages(
     current_page_id: Option<String>,
     limit: usize,
 ) -> Result<Vec<RelatedPage>, String> {
-    let api_key = crate::api_keys::decrypt_key_internal(&app, "openai")
-        .map_err(|_| "OpenAI API 키가 없습니다.".to_string())?;
+    let provider = crate::db_core::coflux_get_setting("embedding_provider".to_string()).unwrap_or("openai".to_string());
+    let ollama_url = crate::db_core::coflux_get_setting("ollama_base_url".to_string()).unwrap_or("http://localhost:11434".to_string());
 
-    let query_embedding = call_openai_embeddings(&text, &api_key).await?;
+    let query_embedding = if provider == "ollama" {
+        let config = crate::api_keys::coflux_get_provider_config("ollama".to_string()).unwrap_or(serde_json::json!({}));
+        let model = config["preferred_model"].as_str().unwrap_or("mxbai-embed-large");
+        call_ollama_embeddings(&text, &ollama_url, model).await?
+    } else {
+        let api_key = crate::api_keys::decrypt_key_internal(&app, "openai")
+            .map_err(|_| "OpenAI API 키가 없습니다.".to_string())?;
+        call_openai_embeddings(&text, &api_key).await?
+    };
 
     // 모든 청크와 유사도 계산 후 페이지별 최대 점수 추출
     let rows: Vec<(String, String, Vec<u8>)> = {

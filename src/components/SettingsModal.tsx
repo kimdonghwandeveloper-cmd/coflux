@@ -64,6 +64,7 @@ const PROVIDERS = [
   { id: 'openai', label: 'OpenAI', placeholder: 'sk-...' },
   { id: 'anthropic', label: 'Anthropic', placeholder: 'sk-ant-...' },
   { id: 'google', label: 'Google Gemini', placeholder: 'API Key' },
+  { id: 'ollama', label: 'Ollama (Local)', placeholder: 'No key required' },
   { id: 'brave_search', label: 'Brave Search', placeholder: 'Brave API Key' },
 ] as const;
 type ProviderId = (typeof PROVIDERS)[number]['id'];
@@ -72,6 +73,7 @@ const MODELS: Record<string, string[]> = {
   openai: ['gpt-4o', 'gpt-4o-mini', 'gpt-3.5-turbo'],
   anthropic: ['claude-3-5-sonnet-20240620', 'claude-3-opus-20240229', 'claude-3-haiku-20240307'],
   google: ['gemini-1.5-pro', 'gemini-1.5-flash'],
+  ollama: ['llama3:8b', 'phi3:latest', 'mistral:latest', 'mxbai-embed-large', 'nomic-embed-text'],
   brave_search: [],
 };
 
@@ -268,7 +270,36 @@ export const SettingsModal = ({
   onUpdateWorkspace: (ws: WorkspaceData) => void;
   onClose: () => void;
 }) => {
-  const [activeTab, setActiveTab] = useState<'appearance' | 'workspace' | 'ai_keys' | 'account'>('appearance');
+  const [activeTab, setActiveTab] = useState<'appearance' | 'workspace' | 'ai_privacy' | 'account'>('appearance');
+  
+  // AI Settings State
+  const [aiProvider, setAiProvider] = useState('openai');
+  const [embeddingProvider, setEmbeddingProvider] = useState('openai');
+  const [ollamaUrl, setOllamaUrl] = useState('http://localhost:11434');
+
+  useEffect(() => {
+    const loadSettings = async () => {
+      try {
+        const prov = await invoke<string>('coflux_get_setting', { key: 'ai_provider' });
+        setAiProvider(prov);
+        const embProv = await invoke<string>('coflux_get_setting', { key: 'embedding_provider' });
+        setEmbeddingProvider(embProv);
+        const url = await invoke<string>('coflux_get_setting', { key: 'ollama_base_url' });
+        setOllamaUrl(url);
+      } catch (e) {
+        console.warn('Failed to load AI settings:', e);
+      }
+    };
+    loadSettings();
+  }, []);
+
+  const saveSetting = async (key: string, value: string) => {
+    try {
+      await invoke('coflux_set_setting', { key, value });
+    } catch (e) {
+      console.error(`Failed to save setting ${key}:`, e);
+    }
+  };
   const baseColors = savedCustomTheme?.colors ?? PRESET_THEMES.find(t => t.id === activeThemeId)?.colors ?? PRESET_THEMES[0].colors;
   const [editColors, setEditColors] = useState<ThemeColors>({ ...baseColors });
   const [isDarkCustom, setIsDarkCustom] = useState(savedCustomTheme?.isDark ?? false);
@@ -507,7 +538,7 @@ export const SettingsModal = ({
   const TABS = [
     { id: 'appearance', label: 'Appearance', icon: <Palette size={14} /> },
     { id: 'workspace', label: 'Workspace', icon: <Layout size={14} /> },
-    { id: 'ai_keys', label: 'AI Keys', icon: <Key size={14} /> },
+    { id: 'ai_privacy', label: 'AI & Local Privacy', icon: <Sparkles size={14} /> },
     { id: 'account', label: 'Account & Plan', icon: <User size={14} /> },
   ] as const;
 
@@ -813,14 +844,98 @@ export const SettingsModal = ({
               </div>
             )}
 
-            {activeTab === 'ai_keys' && (
-              <div>
-                <h3 style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '4px' }}>AI API Keys</h3>
-                <p style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '16px' }}>Bring Your Own Key: 모든 데이터는 암호화되어 로컬에 저장됩니다.</p>
-                <div style={{ background: 'var(--bg-secondary)', borderRadius: '8px', padding: '8px 16px' }}>
-                  {PROVIDERS.map(p => (
-                    <ApiKeyRow key={p.id} provider={p.id} label={p.label} placeholder={p.placeholder} />
-                  ))}
+            {activeTab === 'ai_privacy' && (
+              <div style={{ animation: 'fadeIn 0.2s ease-out' }}>
+                <h3 style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '8px' }}>AI & Local Privacy</h3>
+                <p style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '20px' }}>
+                  로컬 AI(Ollama) 또는 외부 API를 선택하세요. 모든 데이터는 암호화되어 로컬에 캐싱됩니다.
+                </p>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+                  {/* AI Provider (Chat) */}
+                  <section>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
+                      <Sparkles size={14} color="var(--accent)" />
+                      <span style={{ fontSize: '13px', fontWeight: 600 }}>AI Provider (Chat)</span>
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '8px' }}>
+                      {['openai', 'anthropic', 'google', 'ollama'].map(p => (
+                        <button
+                          key={p}
+                          onClick={() => { setAiProvider(p); saveSetting('ai_provider', p); }}
+                          style={{
+                            padding: '10px',
+                            borderRadius: '8px',
+                            border: '1px solid',
+                            borderColor: aiProvider === p ? 'var(--accent)' : 'var(--border-color)',
+                            background: aiProvider === p ? 'rgba(var(--accent-rgb), 0.1)' : 'var(--bg-secondary)',
+                            color: aiProvider === p ? 'var(--text-primary)' : 'var(--text-secondary)',
+                            fontSize: '12px',
+                            fontWeight: 600,
+                            cursor: 'pointer',
+                            transition: 'all 0.2s'
+                          }}
+                        >
+                          {p.toUpperCase()}
+                        </button>
+                      ))}
+                    </div>
+                  </section>
+
+                  {/* Embedding Provider (Map) */}
+                  <section>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
+                      <Layout size={14} color="var(--accent)" />
+                      <span style={{ fontSize: '13px', fontWeight: 600 }}>Embedding Provider (Map)</span>
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '8px' }}>
+                      {['openai', 'ollama'].map(p => (
+                        <button
+                          key={p}
+                          onClick={() => { setEmbeddingProvider(p); saveSetting('embedding_provider', p); }}
+                          style={{
+                            padding: '10px',
+                            borderRadius: '8px',
+                            border: '1px solid',
+                            borderColor: embeddingProvider === p ? 'var(--accent)' : 'var(--border-color)',
+                            background: embeddingProvider === p ? 'rgba(var(--accent-rgb), 0.1)' : 'var(--bg-secondary)',
+                            color: embeddingProvider === p ? 'var(--text-primary)' : 'var(--text-secondary)',
+                            fontSize: '12px',
+                            fontWeight: 600,
+                            cursor: 'pointer',
+                            transition: 'all 0.2s'
+                          }}
+                        >
+                          {p.toUpperCase()}
+                        </button>
+                      ))}
+                    </div>
+                  </section>
+
+                  {/* Ollama URL (Conditional) */}
+                  {(aiProvider === 'ollama' || embeddingProvider === 'ollama') && (
+                    <section style={{ animation: 'slideDownFade 0.3s ease-out' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
+                        <Zap size={14} color="var(--accent)" />
+                        <span style={{ fontSize: '13px', fontWeight: 600 }}>Ollama Base URL</span>
+                      </div>
+                      <input
+                        type="text"
+                        value={ollamaUrl}
+                        onChange={e => setOllamaUrl(e.target.value)}
+                        onBlur={() => saveSetting('ollama_base_url', ollamaUrl)}
+                        placeholder="http://localhost:11434"
+                        style={{ width: '100%', padding: '10px 14px', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'var(--bg-secondary)', color: 'var(--text-primary)', fontSize: '13px', outline: 'none' }}
+                      />
+                    </section>
+                  )}
+
+                  <div style={{ marginTop: '12px', paddingTop: '20px', borderTop: '1px solid var(--border-color)' }}>
+                    <h4 style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '16px' }}>API Keys Management</h4>
+                    {PROVIDERS.map(p => (
+                      <ApiKeyRow key={p.id} provider={p.id} label={p.label} placeholder={p.placeholder} />
+                    ))}
+                  </div>
                 </div>
               </div>
             )}

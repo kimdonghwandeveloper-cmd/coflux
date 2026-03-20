@@ -9,7 +9,9 @@ import { filterSuggestionItems } from "@blocknote/core/extensions";
 import "@blocknote/mantine/style.css";
 import { PageData } from '../App';
 import { WorkspaceTheme } from '../lib/theme';
-import { Image as ImageIcon, Wifi, Palette, Check, Sparkles, Plus } from 'lucide-react';
+import { Image as ImageIcon, Wifi, Palette, Check, Sparkles, Plus, Loader2 } from 'lucide-react';
+import { SMART_TEMPLATES, Template } from '../lib/templates';
+import { routeAiTask } from '../lib/ai_router';
 import { QRCodeSVG } from 'qrcode.react';
 import { invoke } from '@tauri-apps/api/core';
 import * as Y from 'yjs';
@@ -73,6 +75,102 @@ const CollaborativeEditor = ({ provider, currentTheme, workspaceTheme, onAddSubP
   const containerRef = useRef<HTMLDivElement>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [aiSuggestions, setAiSuggestions] = useState<RelatedPage[]>([]);
+  const [isApplyingTemplate, setIsApplyingTemplate] = useState(false);
+  const [templateDescription, setTemplateDescription] = useState("");
+
+  const handleApplyTemplate = async (template: Template) => {
+    if (isApplyingTemplate) return;
+    setIsApplyingTemplate(true);
+    
+    try {
+      const pageContext = `Page Title: ${pageId ? allPages?.find(p => p.id === pageId)?.title : 'New Page'}`;
+      const userContext = templateDescription ? `\nUser Input/Context: ${templateDescription}` : "";
+      
+      const response = await routeAiTask({
+        type: 'ai_request',
+        prompt: `${template.prompt}${userContext}\n\nContext: ${pageContext}`,
+        externalAllowed: true
+      });
+
+      if (response.type === 'ai_response') {
+        let text = response.text;
+        // Clean up markdown code block wrappers if present
+        text = text.replace(/^```[a-z]*\n/i, "").replace(/\n```$/i, "");
+        
+        const blocks = await (editor as any).tryParseMarkdownToBlocks(text);
+        editor.replaceBlocks(editor.document, blocks);
+      }
+    } catch (e) {
+      console.error('Failed to apply template:', e);
+    } finally {
+      setIsApplyingTemplate(false);
+    }
+  };
+
+  const handleAiAction = async (action: 'improve' | 'summarize' | 'explain') => {
+    if (isApplyingTemplate || selectedIds.size === 0) return;
+    setIsApplyingTemplate(true);
+
+    try {
+      const targetBlocks = editor.document.filter((b: any) => selectedIds.has(b.id));
+      const textToProcess = (editor as any).blocksToMarkdownContents(targetBlocks);
+
+      let actionPrompt = '';
+      if (action === 'improve') actionPrompt = '다음 내용을 더 전문적이고 읽기 수월하게 다듬어주세요.';
+      if (action === 'summarize') actionPrompt = '다음 내용을 핵심 위주로 요약해주세요. 결과만 마크다운으로 출력하세요.';
+      if (action === 'explain') actionPrompt = '다음 내용에 대해 친절하게 설명해주세요. 마크다운 형식을 사용하세요.';
+
+      const response = await routeAiTask({
+        type: 'ai_request',
+        prompt: `${actionPrompt}\n\n---\n${textToProcess}\n---`,
+        externalAllowed: true
+      });
+
+      if (response.type === 'ai_response') {
+        let text = response.text;
+        // Clean up markdown code block wrappers if present
+        text = text.replace(/^```[a-z]*\n/i, "").replace(/\n```$/i, "");
+
+        const newBlocks = await (editor as any).tryParseMarkdownToBlocks(text);
+        const lastBlock = targetBlocks[targetBlocks.length - 1];
+        editor.insertBlocks(newBlocks, lastBlock, 'after');
+      }
+    } catch (e) {
+      console.error('AI Action failed:', e);
+    } finally {
+      setIsApplyingTemplate(false);
+      clearSelection();
+    }
+  };
+
+  const [harvestData, setHarvestData] = useState<{ tasks: string[], topics: string[] } | null>(null);
+  const [isHarvesting, setIsHarvesting] = useState(false);
+
+  const handleHarvest = async () => {
+    if (isHarvesting) return;
+    setIsHarvesting(true);
+    
+    try {
+      const fullText = (editor as any).blocksToMarkdownContents(editor.document);
+      const response = await routeAiTask({
+        type: 'ai_request',
+        prompt: `다음은 현재 문서의 내용입니다. 이 문서에서 '수행해야 할 작업(Action Items)'과 '주요 주제(Key Topics)'를 추출해주세요.\n반드시 다음 JSON 형식으로만 응답하세요:\n{"tasks": ["작업1", "작업2"], "topics": ["주제1", "주제2"]}\n\n내용:\n${fullText}`,
+        externalAllowed: true
+      });
+
+      if (response.type === 'ai_response') {
+        const jsonMatch = response.text.match(/\{.*\}/s);
+        if (jsonMatch) {
+          const data = JSON.parse(jsonMatch[0]);
+          setHarvestData(data);
+        }
+      }
+    } catch (e) {
+      console.error('Harvest failed:', e);
+    } finally {
+      setIsHarvesting(false);
+    }
+  };
 
   const clearSelection = useCallback(() => {
     setSelectedIds(prev => prev.size === 0 ? prev : new Set());
@@ -622,6 +720,135 @@ const CollaborativeEditor = ({ provider, currentTheme, workspaceTheme, onAddSubP
         )}
       </BlockNoteView>
 
+      {/* If editor is empty or applying template, show helper UI */}
+      {editor.document.length <= 1 && (!editor.document[0].content || (Array.isArray(editor.document[0].content) && editor.document[0].content.length === 0)) && !isApplyingTemplate && (
+        <div style={{ padding: '24px', border: '1px dashed var(--border-color)', borderRadius: '12px', marginTop: '24px', animation: 'fadeIn 0.5s ease-out' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px', color: 'var(--text-secondary)' }}>
+            <Sparkles size={16} color="var(--accent)" />
+            <span style={{ fontSize: '13px', fontWeight: 600, letterSpacing: '0.05em' }}>AI 스마트 템플릿으로 시작하기</span>
+          </div>
+          
+          <div style={{ marginBottom: '16px' }}>
+            <input 
+              type="text"
+              value={templateDescription}
+              onChange={e => setTemplateDescription(e.target.value)}
+              placeholder="무엇에 대한 문서인가요? (예: 마케팅 회의, 신규 로고 디자인 브리프...)"
+              style={{
+                width: '100%', padding: '12px 16px', borderRadius: '8px', border: '1px solid var(--border-color)',
+                background: 'var(--bg-primary)', color: 'var(--text-primary)', fontSize: '14px', outline: 'none',
+                boxSizing: 'border-box', boxShadow: 'inset 0 1px 3px rgba(0,0,0,0.02)'
+              }}
+            />
+            <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '6px', opacity: 0.7 }}>
+              * 위 칸에 간단한 설명을 남기면 AI가 더 정확한 초안을 작성해줍니다.
+            </div>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '12px' }}>
+            {SMART_TEMPLATES.map(t => (
+              <div 
+                key={t.id} 
+                onClick={() => handleApplyTemplate(t)}
+                style={{ 
+                  padding: '16px', borderRadius: '10px', background: 'var(--bg-secondary)', 
+                  border: '1px solid var(--border-color)', cursor: 'pointer', transition: 'all 0.2s',
+                  display: 'flex', flexDirection: 'column', gap: '8px',
+                  boxShadow: '0 2px 8px rgba(0,0,0,0.05)'
+                } as any}
+                onMouseEnter={e => {
+                  e.currentTarget.style.borderColor = 'var(--accent)';
+                  e.currentTarget.style.transform = 'translateY(-2px)';
+                  e.currentTarget.style.boxShadow = '0 4px 12px rgba(var(--accent-rgb), 0.15)';
+                }}
+                onMouseLeave={e => {
+                  e.currentTarget.style.borderColor = 'var(--border-color)';
+                  e.currentTarget.style.transform = 'translateY(0)';
+                  e.currentTarget.style.boxShadow = '0 2px 8px rgba(0,0,0,0.05)';
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <span style={{ fontSize: '20px' }}>{t.icon}</span>
+                  <div style={{ fontWeight: 700, fontSize: '14px', color: 'var(--text-primary)' }}>{t.name}</div>
+                </div>
+                <div style={{ fontSize: '12px', color: 'var(--text-secondary)', lineHeight: 1.4 }}>{t.description}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {isApplyingTemplate && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: '14px', padding: '32px', color: 'var(--text-secondary)', background: 'var(--bg-secondary)', borderRadius: '12px', marginTop: '24px' }}>
+          <Loader2 size={24} color="var(--accent)" style={{ animation: 'spin 1.5s linear infinite' }} />
+          <div>
+            <div style={{ fontSize: '14px', fontWeight: 600, color: 'var(--text-primary)' }}>AI가 문서를 작성 중입니다...</div>
+            <div style={{ fontSize: '12px', opacity: 0.7 }}>잠시만 기다려주세요. 구조화된 초안을 생성하고 있습니다.</div>
+          </div>
+        </div>
+      )}
+
+      {/* Knowledge Harvest Button (Floating) */}
+      <div style={{ marginTop: '40px', display: 'flex', justifyContent: 'center' }}>
+        <button 
+          onClick={handleHarvest}
+          disabled={isHarvesting}
+          style={{ 
+            display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 20px', 
+            borderRadius: '20px', border: '1px solid var(--border-color)', 
+            background: 'var(--bg-surface)', color: 'var(--text-secondary)', 
+            fontSize: '13px', fontWeight: 600, cursor: 'pointer', transition: 'all 0.2s',
+            boxShadow: '0 2px 8px rgba(0,0,0,0.05)'
+          }}
+          onMouseEnter={e => {
+            e.currentTarget.style.borderColor = 'var(--accent)';
+            e.currentTarget.style.color = 'var(--accent)';
+          }}
+          onMouseLeave={e => {
+            e.currentTarget.style.borderColor = 'var(--border-color)';
+            e.currentTarget.style.color = 'var(--text-secondary)';
+          }}
+        >
+          {isHarvesting ? <Loader2 size={16} style={{ animation: 'spin 1.5s linear infinite' }} /> : <Sparkles size={16} />}
+          지식 수확하기 (Harvest Insights)
+        </button>
+      </div>
+
+      {harvestData && (
+        <div style={{ marginTop: '24px', padding: '24px', background: 'var(--bg-secondary)', borderRadius: '16px', border: '1px solid var(--border-color)', animation: 'slideUpFade 0.3s ease-out' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+            <div style={{ fontSize: '14px', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <Sparkles size={16} color="var(--accent)" /> 지능형 지식 적출
+            </div>
+            <button onClick={() => setHarvestData(null)} style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer' }}>✕</button>
+          </div>
+          
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px' }}>
+            <div>
+              <div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '12px' }}>🎯 Action Items</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                {harvestData.tasks.length > 0 ? harvestData.tasks.map((t, idx) => (
+                  <div key={idx} style={{ padding: '10px', background: 'var(--bg-primary)', borderRadius: '8px', fontSize: '13px', display: 'flex', alignItems: 'flex-start', gap: '10px', border: '1px solid var(--border-color)' }}>
+                    <div style={{ marginTop: '4px', width: '6px', height: '6px', borderRadius: '50%', background: 'var(--accent)', flexShrink: 0 }} />
+                    {t}
+                  </div>
+                )) : <div style={{ fontSize: '12px', color: 'var(--text-secondary)', opacity: 0.6 }}>추출된 할 일이 없습니다.</div>}
+              </div>
+            </div>
+            <div>
+              <div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '12px' }}>🏷️ Key Topics</div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                {harvestData.topics.length > 0 ? harvestData.topics.map((topic, idx) => (
+                  <span key={idx} style={{ padding: '6px 12px', borderRadius: '14px', background: 'var(--accent)', color: '#fff', fontSize: '12px', fontWeight: 600 }}>
+                    #{topic}
+                  </span>
+                )) : <div style={{ fontSize: '12px', color: 'var(--text-secondary)', opacity: 0.6 }}>키워드가 없습니다.</div>}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Block action toolbar — appears after drag-select */}
        {selectedIds.size > 0 && (
          <div style={{
@@ -634,6 +861,30 @@ const CollaborativeEditor = ({ provider, currentTheme, workspaceTheme, onAddSubP
            <span style={{ color: 'rgba(255,255,255,0.7)', fontSize: 12 }}>
              {selectedIds.size}개 블록 선택됨
            </span>
+           <div style={{ width: 1, height: 16, background: 'rgba(255,255,255,0.2)' }} />
+           
+           <button
+             onClick={() => handleAiAction('improve')}
+             disabled={isApplyingTemplate}
+             style={{ background: 'transparent', border: 'none', color: '#fff', padding: '4px 8px', borderRadius: 4, cursor: 'pointer', fontSize: 12, display: 'flex', alignItems: 'center', gap: 4 }}
+           >
+             <Sparkles size={12} color="var(--accent)" /> 다듬기
+           </button>
+           <button
+             onClick={() => handleAiAction('summarize')}
+             disabled={isApplyingTemplate}
+             style={{ background: 'transparent', border: 'none', color: '#fff', padding: '4px 8px', borderRadius: 4, cursor: 'pointer', fontSize: 12 }}
+           >
+             요약
+           </button>
+           <button
+             onClick={() => handleAiAction('explain')}
+             disabled={isApplyingTemplate}
+             style={{ background: 'transparent', border: 'none', color: '#fff', padding: '4px 8px', borderRadius: 4, cursor: 'pointer', fontSize: 12 }}
+           >
+             설명
+           </button>
+
            <div style={{ width: 1, height: 16, background: 'rgba(255,255,255,0.2)' }} />
            <button
              onClick={() => {

@@ -112,6 +112,20 @@ pub fn init_db(app_handle: &tauri::AppHandle) -> Result<()> {
         [],
     )?;
 
+    // Create a table for global settings
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS settings (
+            key TEXT PRIMARY KEY,
+            value TEXT NOT NULL
+        )",
+        [],
+    )?;
+
+    // Seed default settings
+    let _ = conn.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('ai_provider', 'openai')", []);
+    let _ = conn.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('embedding_provider', 'openai')", []);
+    let _ = conn.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('ollama_base_url', 'http://localhost:11434')", []);
+
     // Create a table for custom manual links created in Knowledge Map
     conn.execute(
         "CREATE TABLE IF NOT EXISTS manual_links (
@@ -406,6 +420,32 @@ pub fn coflux_remove_manual_link(source_id: String, target_id: String) -> Result
         conn.execute(
             "DELETE FROM manual_links WHERE source_page_id = ?1 AND target_page_id = ?2",
             params![source_id, target_id],
+        ).map_err(|e| e.to_string())?;
+        Ok(())
+    } else {
+        Err("Database not initialized".into())
+    }
+}
+#[tauri::command]
+pub fn coflux_get_setting(key: String) -> Result<String, String> {
+    if let Some(conn) = DB_CONN.lock().unwrap().as_ref() {
+        let value: String = conn.query_row(
+            "SELECT value FROM settings WHERE key = ?1",
+            params![key],
+            |row| row.get(0),
+        ).map_err(|e| e.to_string())?;
+        Ok(value)
+    } else {
+        Err("Database not initialized".into())
+    }
+}
+
+#[tauri::command]
+pub fn coflux_set_setting(key: String, value: String) -> Result<(), String> {
+    if let Some(conn) = DB_CONN.lock().unwrap().as_ref() {
+        conn.execute(
+            "INSERT OR REPLACE INTO settings (key, value) VALUES (?1, ?2)",
+            params![key, value],
         ).map_err(|e| e.to_string())?;
         Ok(())
     } else {

@@ -14,12 +14,14 @@ import {
   Position,
   Connection,
   addEdge,
+  useReactFlow,
+  ReactFlowProvider
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import dagre from '@dagrejs/dagre';
 import { PageData } from '../App';
-import { getAllLinks, addManualLink, removeManualLink, getAllPageEmbeddings, PageEmbedding, PageActivity } from '../lib/embeddings';
-import { Brain, Network, Flame, X } from 'lucide-react';
+import { getAllLinks, addManualLink, removeManualLink, getAllPageEmbeddings, PageEmbedding, PageActivity, searchSimilar } from '../lib/embeddings';
+import { Brain, Network, Flame, X, Search, Loader2 } from 'lucide-react';
 
 // ─── Dagre 자동 레이아웃 ─────────────────────────────────────────────────────
 
@@ -43,31 +45,38 @@ function applyDagreLayout(nodes: Node[], edges: Edge[]): Node[] {
 
 // ─── 커스텀 노드 ──────────────────────────────────────────────────────────────
 
-function PageNode({ data }: { data: { icon: string; title: string; isActive: boolean; activityScore?: number; isHeatmap?: boolean } }) {
+function PageNode({ data }: { data: { icon: string; title: string; isActive: boolean; activityScore?: number; isHeatmap?: boolean; isHighlighted?: boolean; isDimmed?: boolean } }) {
   const heatColor = data.isHeatmap && data.activityScore !== undefined 
     ? `rgba(255, ${150 - data.activityScore * 100}, 0, ${0.1 + data.activityScore * 0.9})` 
     : 'var(--accent)';
+
+  const activeColor = data.isHighlighted ? '#00e5ff' : heatColor; // 검색 시 Cyan 강조
 
   return (
     <div style={{
       padding: '8px 14px',
       borderRadius: '8px',
       background: data.isActive ? 'var(--accent)' : 'var(--bg-surface)',
-      border: `1.5px solid ${data.isHeatmap ? heatColor : (data.isActive ? 'var(--accent)' : 'var(--border-color)')}`,
+      border: `1.5px solid ${data.isHighlighted ? activeColor : (data.isHeatmap ? heatColor : (data.isActive ? 'var(--accent)' : 'var(--border-color)'))}`,
       color: data.isActive ? 'var(--bg-primary)' : 'var(--text-primary)',
+      opacity: data.isDimmed ? 0.35 : 1,
+      transform: data.isHighlighted ? 'scale(1.1)' : 'scale(1)',
       fontSize: '13px',
-      fontWeight: data.isActive ? 600 : 400,
+      fontWeight: (data.isActive || data.isHighlighted) ? 600 : 400,
       display: 'flex',
       alignItems: 'center',
       gap: '7px',
       minWidth: `${NODE_W}px`,
-      boxShadow: data.isHeatmap && data.activityScore ? `0 0 ${10 + data.activityScore * 15}px ${heatColor}` : '0 2px 8px rgba(0,0,0,0.08)',
+      boxShadow: data.isHighlighted 
+        ? `0 0 20px rgba(0, 229, 255, 0.6)`
+        : (data.isHeatmap && data.activityScore ? `0 0 ${10 + data.activityScore * 15}px ${heatColor}` : '0 2px 8px rgba(0,0,0,0.08)'),
       cursor: 'pointer',
-      transition: 'all 0.3s ease',
+      transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
       whiteSpace: 'nowrap',
       overflow: 'hidden',
       textOverflow: 'ellipsis',
-      position: 'relative'
+      position: 'relative',
+      zIndex: data.isHighlighted ? 100 : 1
     }}>
       <Handle type="target" position={Position.Top} style={{ background: 'var(--text-secondary)', width: 6, height: 6, opacity: 0.5 }} />
       <span style={{ fontSize: '15px' }}>{data.icon}</span>
@@ -172,7 +181,8 @@ function applySemanticLayout(nodes: Node[], embeddings: PageEmbedding[]): Node[]
   }));
 }
 
-export function KnowledgeMap({ 
+// ReactFlowProvider를 적용하기 위해 내부 로직 분리
+function KnowledgeMapContent({ 
   pages, 
   activePageId, 
   onNavigate, 
@@ -187,6 +197,13 @@ export function KnowledgeMap({
   const [wikiLinks, setWikiLinks] = useState<[string, string][]>([]);
   const [embeddings, setEmbeddings] = useState<PageEmbedding[]>([]);
 
+  // 검색 상태
+  const [mapSearch, setMapSearch] = useState('');
+  const [searchResults, setSearchResults] = useState<string[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
+
+  const { fitView } = useReactFlow();
+
   useEffect(() => {
     getAllLinks().then(setWikiLinks).catch(() => {});
   }, []);
@@ -197,8 +214,36 @@ export function KnowledgeMap({
     }
   }, [isSemantic, embeddings.length]);
 
+  useEffect(() => {
+    if (!mapSearch.trim()) {
+      setSearchResults([]);
+      return;
+    }
+
+    const timer = setTimeout(async () => {
+      setIsSearching(true);
+      try {
+        const results = await searchSimilar(mapSearch, 10);
+        const ids = [...new Set(results.map((r: any) => r.page_id))];
+        setSearchResults(ids);
+        
+        if (ids.length > 0) {
+          fitView({ nodes: ids.map(id => ({ id })), duration: 800, padding: 0.5 });
+        }
+      } catch (e) {
+        console.warn('[MapSearch] 실패:', e);
+      } finally {
+        setIsSearching(false);
+      }
+    }, 600);
+
+    return () => clearTimeout(timer);
+  }, [mapSearch, fitView]);
+
   const rawNodes: Node[] = useMemo(() => {
     const scoresMap = new Map(activityScores.map(s => [s.page_id, s.score]));
+    const searchedIds = new Set(searchResults);
+
     return visible.map(p => ({
       id: p.id,
       type: 'pageNode',
@@ -208,10 +253,12 @@ export function KnowledgeMap({
         title: p.title || 'Untitled', 
         isActive: p.id === activePageId,
         activityScore: scoresMap.get(p.id) || 0,
-        isHeatmap
+        isHeatmap,
+        isHighlighted: searchedIds.has(p.id),
+        isDimmed: mapSearch.trim() !== '' && !searchedIds.has(p.id)
       },
     }));
-  }, [visible, activePageId, activityScores, isHeatmap]);
+  }, [visible, activePageId, activityScores, isHeatmap, searchResults, mapSearch]);
 
   const visibleIds = useMemo(() => new Set(visible.map(p => p.id)), [visible]);
 
@@ -340,13 +387,45 @@ export function KnowledgeMap({
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <Network size={16} color="var(--accent)" />
             <span style={{ fontSize: '15px', fontWeight: 600 }}>Knowledge Map</span>
+
+            {/* 내장 검색 바 */}
+            <div style={{
+              marginLeft: '16px',
+              padding: '4px 12px',
+              background: 'var(--bg-secondary)',
+              borderRadius: '16px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              width: '240px',
+              border: '1px solid var(--border-color)',
+              transition: 'all 0.2s',
+              boxShadow: mapSearch ? '0 0 8px rgba(var(--accent-rgb), 0.1)' : 'none'
+            }}>
+              {isSearching ? <Loader2 size={12} className="animate-spin" /> : <Search size={12} color="var(--text-secondary)" />}
+              <input 
+                value={mapSearch}
+                onChange={e => setMapSearch(e.target.value)}
+                placeholder="Search topic in map..."
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  outline: 'none',
+                  fontSize: '11px',
+                  color: 'var(--text-primary)',
+                  width: '100%'
+                }}
+              />
+              {mapSearch && <X size={12} onClick={() => setMapSearch('')} style={{ cursor: 'pointer', opacity: 0.6 }} />}
+            </div>
+
             <div 
               onClick={() => setIsSemantic(!isSemantic)}
               style={{
                 marginLeft: '12px',
                 padding: '4px 10px',
                 borderRadius: '20px',
-                background: isSemantic ? 'var(--accent)' : 'var(--bg-primary)',
+                background: isSemantic ? 'var(--accent)' : 'var(--bg-surface)',
                 color: isSemantic ? 'var(--bg-primary)' : 'var(--text-secondary)',
                 fontSize: '11px',
                 fontWeight: 600,
@@ -443,5 +522,14 @@ export function KnowledgeMap({
         </div>
       </div>
     </div>
+  );
+}
+
+// 최종적으로 Provider로 감싸서 내보냄
+export function KnowledgeMap(props: KnowledgeMapProps) {
+  return (
+    <ReactFlowProvider>
+      <KnowledgeMapContent {...props} />
+    </ReactFlowProvider>
   );
 }

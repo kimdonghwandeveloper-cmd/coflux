@@ -96,6 +96,8 @@ pub fn run() {
             db_core::get_asset,
             db_core::coflux_add_manual_link,
             db_core::coflux_remove_manual_link,
+            db_core::coflux_get_setting,
+            db_core::coflux_set_setting,
             workflows::get_workflows,
             workflows::save_workflow,
             workflows::delete_workflow,
