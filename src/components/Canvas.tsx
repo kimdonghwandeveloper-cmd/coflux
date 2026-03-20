@@ -97,7 +97,7 @@ const CollaborativeEditor = ({ provider, currentTheme, workspaceTheme, onAddSubP
         // Clean up markdown code block wrappers if present
         text = text.replace(/^```[a-z]*\n/i, "").replace(/\n```$/i, "");
         
-        const blocks = await (editor as any).tryParseMarkdownToBlocks(text);
+        const blocks = (editor as any).tryParseMarkdownToBlocks(text);
         editor.replaceBlocks(editor.document, blocks);
       }
     } catch (e) {
@@ -112,26 +112,40 @@ const CollaborativeEditor = ({ provider, currentTheme, workspaceTheme, onAddSubP
     setIsApplyingTemplate(true);
 
     try {
-      const targetBlocks = editor.document.filter((b: any) => selectedIds.has(b.id));
-      const textToProcess = (editor as any).blocksToMarkdownContents(targetBlocks);
-
-      let actionPrompt = '';
-      if (action === 'improve') actionPrompt = '다음 내용을 더 전문적이고 읽기 수월하게 다듬어주세요.';
-      if (action === 'summarize') actionPrompt = '다음 내용을 핵심 위주로 요약해주세요. 결과만 마크다운으로 출력하세요.';
-      if (action === 'explain') actionPrompt = '다음 내용에 대해 친절하게 설명해주세요. 마크다운 형식을 사용하세요.';
-
-      const response = await routeAiTask({
-        type: 'ai_request',
-        prompt: `${actionPrompt}\n\n---\n${textToProcess}\n---`,
-        externalAllowed: true
+      const targetBlocks: any[] = [];
+      editor.forEachBlock((block) => {
+        if (selectedIds.has(block.id)) {
+          targetBlocks.push(block);
+        }
+        return true;
       });
 
-      if (response.type === 'ai_response') {
-        let text = response.text;
-        // Clean up markdown code block wrappers if present
-        text = text.replace(/^```[a-z]*\n/i, "").replace(/\n```$/i, "");
+      if (targetBlocks.length === 0) {
+        // Fallback: try top-level filter if forEachBlock didn't catch it for some reason
+        targetBlocks.push(...editor.document.filter((b: any) => selectedIds.has(b.id)));
+      }
 
-        const newBlocks = await (editor as any).tryParseMarkdownToBlocks(text);
+      if (targetBlocks.length === 0) return;
+
+        const textToProcess = (editor as any).blocksToMarkdownLossy(targetBlocks);
+
+        let actionPrompt = '';
+        if (action === 'improve') actionPrompt = '다음 내용을 더 전문적이고 읽기 수월하게 다듬어주세요. 원본의 핵심 정보와 인물 정보는 반드시 유지하세요.';
+        if (action === 'summarize') actionPrompt = '다음 내용을 [연구/내용 배경], [핵심 제안], [기술적 특징], [주요 성과], [결론 및 향후 과제]의 5개 항목으로 구조화하여 요약해주세요. 원본에 언급된 인물이나 팀 정보가 있다면 요약의 서두에 포함시키세요. 결과만 마크다운으로 출력하세요.';
+        if (action === 'explain') actionPrompt = '다음 내용에 대해 쉽고 친절하게 설명해주세요. 마크다운 형식을 사용하세요.';
+
+        const response = await routeAiTask({
+          type: 'ai_request',
+          prompt: `${actionPrompt}\n\n---\n${textToProcess}\n---`,
+          externalAllowed: true
+        });
+
+        if (response.type === 'ai_response') {
+          let text = response.text;
+          // Clean up markdown code block wrappers if present
+          text = text.replace(/^```[a-z]*\n/i, "").replace(/\n```$/i, "");
+
+          const newBlocks = (editor as any).tryParseMarkdownToBlocks(text);
         const lastBlock = targetBlocks[targetBlocks.length - 1];
         editor.insertBlocks(newBlocks, lastBlock, 'after');
       }
@@ -151,7 +165,7 @@ const CollaborativeEditor = ({ provider, currentTheme, workspaceTheme, onAddSubP
     setIsHarvesting(true);
     
     try {
-      const fullText = (editor as any).blocksToMarkdownContents(editor.document);
+      const fullText = (editor as any).blocksToMarkdownLossy(editor.document);
       const response = await routeAiTask({
         type: 'ai_request',
         prompt: `다음은 현재 문서의 내용입니다. 이 문서에서 '수행해야 할 작업(Action Items)'과 '주요 주제(Key Topics)'를 추출해주세요.\n반드시 다음 JSON 형식으로만 응답하세요:\n{"tasks": ["작업1", "작업2"], "topics": ["주제1", "주제2"]}\n\n내용:\n${fullText}`,
@@ -159,10 +173,18 @@ const CollaborativeEditor = ({ provider, currentTheme, workspaceTheme, onAddSubP
       });
 
       if (response.type === 'ai_response') {
-        const jsonMatch = response.text.match(/\{.*\}/s);
+        let text = response.text;
+        // Clean up markdown code block wrappers if present
+        text = text.replace(/^```[a-z]*\n/i, "").replace(/\n```$/i, "");
+        
+        const jsonMatch = text.match(/\{[\s\S]*\}/);
         if (jsonMatch) {
-          const data = JSON.parse(jsonMatch[0]);
-          setHarvestData(data);
+          try {
+            const data = JSON.parse(jsonMatch[0]);
+            setHarvestData(data);
+          } catch (parseErr) {
+            console.error('Harvest JSON parse error:', parseErr);
+          }
         }
       }
     } catch (e) {
@@ -220,6 +242,12 @@ const CollaborativeEditor = ({ provider, currentTheme, workspaceTheme, onAddSubP
 
     const onMouseDown = (e: MouseEvent) => {
       if ((e.target as HTMLElement).closest('.bn-side-menu')) return;
+      
+      // If clicking outside the AI toolbar, clear current selection to allow fresh start
+      if (!(e.target as HTMLElement).closest('.ai-action-toolbar')) {
+        setSelectedIds(new Set());
+      }
+
       rawStart = { x: e.clientX, y: e.clientY };
       startBlockEl = blockAtY(container, e.clientY);
       blockSelectActive = false;
@@ -231,7 +259,7 @@ const CollaborativeEditor = ({ provider, currentTheme, workspaceTheme, onAddSubP
       const dy = Math.abs(e.clientY - rawStart.y);
 
       if (!blockSelectActive) {
-        if (dy < 6 || dx > dy) return; // wait for clear vertical intent
+        if (dy < 10 || dx > dy) return; // wait for clear vertical intent
         blockSelectActive = true;
         container.classList.add(CLS.SELECTING);
         overlay = document.createElement('div');
@@ -257,7 +285,9 @@ const CollaborativeEditor = ({ provider, currentTheme, workspaceTheme, onAddSubP
       container.querySelectorAll<HTMLElement>(`[data-id].${CLS.BLOCK_SEL}`).forEach(el =>
         ids.add(el.getAttribute('data-id')!)
       );
-      setSelectedIds(ids);
+      if (ids.size > 0) {
+        setSelectedIds(ids);
+      }
     };
 
     container.addEventListener('mousedown', onMouseDown);
@@ -596,9 +626,17 @@ const CollaborativeEditor = ({ provider, currentTheme, workspaceTheme, onAddSubP
 
   // 디버깅용: 에디터 인스턴스 자체의 협업 상태 확인
   useEffect(() => {
-    if (editor) {
-      // Instance ready
-    }
+    if (!editor) return;
+    const unsub = editor.onSelectionChange(() => {
+      const selection = editor.getSelection();
+      if (selection && selection.blocks.length > 0) {
+        const ids = new Set(selection.blocks.map(b => b.id));
+        setSelectedIds(ids);
+      }
+      // Note: We don't clear selectedIds here to prevent flicker on mouseup.
+      // Clearing is handled by onMouseDown or Escape.
+    });
+    return unsub;
   }, [editor]);
 
   // UndoManager를 리렌더링 시에도 유지하기 위한 Ref
@@ -851,7 +889,7 @@ const CollaborativeEditor = ({ provider, currentTheme, workspaceTheme, onAddSubP
 
       {/* Block action toolbar — appears after drag-select */}
        {selectedIds.size > 0 && (
-         <div style={{
+         <div className="ai-action-toolbar" style={{
            position: 'fixed', bottom: 28, left: '50%', transform: 'translateX(-50%)',
            background: '#2f2f2f', color: '#fff', borderRadius: 8,
            padding: '8px 14px', display: 'flex', alignItems: 'center', gap: 10,
