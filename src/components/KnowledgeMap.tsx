@@ -15,7 +15,11 @@ import {
   Connection,
   addEdge,
   useReactFlow,
-  ReactFlowProvider
+  ReactFlowProvider,
+  BaseEdge,
+  EdgeLabelRenderer,
+  getBezierPath,
+  EdgeProps
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import dagre from '@dagrejs/dagre';
@@ -87,6 +91,82 @@ function PageNode({ data }: { data: { icon: string; title: string; isActive: boo
 }
 
 const nodeTypes = { pageNode: PageNode };
+
+function DeletableEdge({
+  id,
+  sourceX,
+  sourceY,
+  targetX,
+  targetY,
+  sourcePosition,
+  targetPosition,
+  style = {},
+  markerEnd,
+  source,
+  target
+}: EdgeProps) {
+  const [edgePath, labelX, labelY] = getBezierPath({
+    sourceX,
+    sourceY,
+    sourcePosition,
+    targetX,
+    targetY,
+    targetPosition,
+  });
+
+  const onEdgeClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    // 엣지 삭제 로직은 KnowledgeMapContent의 onEdgesDelete에서 처리되도록 
+    // 여기서는 단순히 이벤트를 발생시키거나 가이드를 줄 수 있음.
+    // 하지만 사용자 요청에 따라 여기서 직접 삭제 가능하게 함.
+    window.dispatchEvent(new CustomEvent('coflux-delete-edge', { detail: { id, source, target } }));
+  };
+
+  return (
+    <>
+      <BaseEdge path={edgePath} markerEnd={markerEnd} style={style} />
+      <EdgeLabelRenderer>
+        <div
+          style={{
+            position: 'absolute',
+            transform: `translate(-50%, -50%) translate(${labelX}px,${labelY}px)`,
+            pointerEvents: 'all',
+          }}
+          className="nodrag nopan"
+        >
+          <button
+            style={{
+              width: '18px',
+              height: '18px',
+              background: 'var(--bg-primary)',
+              border: '1px solid var(--border-color)',
+              cursor: 'pointer',
+              borderRadius: '50%',
+              fontSize: '12px',
+              lineHeight: 1,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              color: 'var(--text-secondary)',
+              boxShadow: '0 2px 5px rgba(0,0,0,0.1)',
+              transition: 'all 0.2s'
+            }}
+            onMouseOver={e => (e.currentTarget.style.color = 'var(--error)')}
+            onMouseOut={e => (e.currentTarget.style.color = 'var(--text-secondary)')}
+            onClick={onEdgeClick}
+            title="Delete link"
+          >
+            ×
+          </button>
+        </div>
+      </EdgeLabelRenderer>
+    </>
+  );
+}
+
+const edgeTypes = {
+  deletable: DeletableEdge
+};
 
 // ─── 메인 컴포넌트 ────────────────────────────────────────────────────────────
 
@@ -280,6 +360,7 @@ function KnowledgeMapContent({
         id: `wiki-${s}-${t}`,
         source: s,
         target: t,
+        type: 'deletable',
         style: { stroke: 'var(--accent)', strokeWidth: 1.5, strokeDasharray: '3 3' },
         animated: true,
         label: t === s ? undefined : 'link',
@@ -324,12 +405,25 @@ function KnowledgeMapContent({
     setEdges(nextEdges);
   }, [isSemantic, rawEdges, setEdges]);
 
+  useEffect(() => {
+    const handleDeleteEdge = (e: any) => {
+      const { id, source, target } = e.detail;
+      setEdges((eds) => eds.filter((edge) => edge.id !== id));
+      if (!id.startsWith('parent-')) {
+        removeManualLink(source, target);
+      }
+    };
+    window.addEventListener('coflux-delete-edge', handleDeleteEdge);
+    return () => window.removeEventListener('coflux-delete-edge', handleDeleteEdge);
+  }, [setEdges]);
+
   const onConnect = useCallback(
     (params: Connection) => {
       if (params.source && params.target) {
         addManualLink(params.source, params.target);
         setEdges((eds) => addEdge({ 
           ...params, 
+          type: 'deletable',
           style: { stroke: 'var(--accent)', strokeWidth: 1.5, strokeDasharray: '3 3' },
           animated: true,
           label: 'link'
@@ -489,6 +583,7 @@ function KnowledgeMapContent({
               onConnect={onConnect}
               onEdgesDelete={onEdgesDelete}
               nodeTypes={nodeTypes}
+              edgeTypes={edgeTypes}
               fitView
               fitViewOptions={{ padding: 0.2 }}
               minZoom={0.3}

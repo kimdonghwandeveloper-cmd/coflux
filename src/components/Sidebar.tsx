@@ -130,11 +130,45 @@ export const Sidebar = ({
   activityScores?: PageActivity[]
 }) => {
   const { t } = useTranslation();
+  const [showInsights, setShowInsights] = useState(true);
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [activeDragPage, setActiveDragPage] = useState<PageData | null>(null);
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
   const [showWsDropdown, setShowWsDropdown] = useState(false);
   const [showTrash, setShowTrash] = useState(false);
+  
+  useEffect(() => {
+    const checkInsights = async () => {
+      try {
+        const { invoke } = await import('@tauri-apps/api/core');
+        const { getVersion } = await import('@tauri-apps/api/app');
+        
+        const currentVersion = await getVersion();
+        const dismissedVersion = await invoke<string>('coflux_get_setting', { key: 'dismissed_insights_version' });
+        
+        if (dismissedVersion !== currentVersion) {
+          setShowInsights(true);
+        } else {
+          setShowInsights(false);
+        }
+      } catch (e) {
+        setShowInsights(true);
+      }
+    };
+    checkInsights();
+  }, []);
+
+  const handleDismissInsights = async () => {
+    setShowInsights(false);
+    try {
+      const { invoke } = await import('@tauri-apps/api/core');
+      const { getVersion } = await import('@tauri-apps/api/app');
+      const currentVersion = await getVersion();
+      await invoke('coflux_set_setting', { key: 'dismissed_insights_version', value: currentVersion });
+    } catch (e) {
+      console.error(e);
+    }
+  };
   const [newWsName, setNewWsName] = useState('');
   const menuRef = useRef<HTMLDivElement>(null);
   const wsRef = useRef<HTMLDivElement>(null);
@@ -251,23 +285,31 @@ export const Sidebar = ({
       </div>
       
       {/* AI Insights Card */}
-      <div style={{ padding: '0 16px 20px', animation: 'fadeIn 0.5s ease-out' }}>
-        <div style={{ 
-          background: 'linear-gradient(135deg, var(--bg-surface) 0%, var(--bg-secondary) 100%)', 
-          borderRadius: '12px', border: '1px solid var(--border-color)', padding: '12px',
-          boxShadow: '0 4px 12px rgba(0,0,0,0.05)'
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '11px', fontWeight: 700, color: 'var(--accent)', letterSpacing: '0.05em', marginBottom: '8px' }}>
-            <Sparkles size={12} /> <span>COFLUX INSIGHTS</span>
-          </div>
-          <div style={{ fontSize: '12px', color: 'var(--text-primary)', fontWeight: 600, marginBottom: '4px' }}>
-            {pages.length > 5 ? `${pages.length}개의 지식이 연결되어 있습니다.` : '새로운 지식을 연결해보세요!'}
-          </div>
-          <div style={{ fontSize: '11px', color: 'var(--text-secondary)', lineHeight: 1.4 }}>
-            {activePageId ? '현재 페이지를 분석하여 새로운 인사이트를 도출할 준비가 되었습니다.' : '지난주보다 활동성이 15% 증가했습니다. 꾸준한 기록을 응원합니다!'}
+      {showInsights && (
+        <div style={{ padding: '0 16px 20px', animation: 'fadeIn 0.5s ease-out' }}>
+          <div style={{ 
+            background: 'linear-gradient(135deg, var(--bg-surface) 0%, var(--bg-secondary) 100%)', 
+            borderRadius: '12px', border: '1px solid var(--border-color)', padding: '12px',
+            boxShadow: '0 4px 12px rgba(0,0,0,0.05)',
+            position: 'relative'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '11px', fontWeight: 700, color: 'var(--accent)', letterSpacing: '0.05em' }}>
+                <Sparkles size={12} /> <span>COFLUX INSIGHTS</span>
+              </div>
+              <div onClick={handleDismissInsights} style={{ cursor: 'pointer', padding: '2px', display: 'flex', opacity: 0.6 }}>
+                <X size={12} color="var(--text-secondary)" />
+              </div>
+            </div>
+            <div style={{ fontSize: '12px', color: 'var(--text-primary)', fontWeight: 600, marginBottom: '4px' }}>
+              {pages.length > 5 ? `${pages.length}개의 지식이 연결되어 있습니다.` : '새로운 지식을 연결해보세요!'}
+            </div>
+            <div style={{ fontSize: '11px', color: 'var(--text-secondary)', lineHeight: 1.4 }}>
+              {activePageId ? '현재 페이지를 분석하여 새로운 인사이트를 도출할 준비가 되었습니다.' : '지난주보다 활동성이 15% 증가했습니다. 꾸준한 기록을 응원합니다!'}
+            </div>
           </div>
         </div>
-      </div>
+      )}
 
       <div style={{ flex: 1, overflowY: 'auto' }}>
         {favoriteRoots.length > 0 && (

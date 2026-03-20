@@ -5,7 +5,7 @@ import { Sidebar } from './components/Sidebar';
 import { SettingsModal } from './components/SettingsModal';
 import { WorkflowBuilderModal } from './components/WorkflowBuilder';
 import { ScriptEditorModal } from './components/ScriptEditor';
-import { Menu, Search, Users, Bell, Sparkles, Zap, Code2, GitBranch } from 'lucide-react';
+import { Menu, Search, Users, Bell, Sparkles, Zap, Code2, GitBranch, Loader2 } from 'lucide-react';
 import { AiChatWidget } from './components/AiChatWidget';
 import { KnowledgeMap } from './components/KnowledgeMap';
 import { Updater } from './components/Updater';
@@ -554,54 +554,55 @@ function App() {
       )}
 
       {showLoginPrompt && !user && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(8px)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', animation: 'fadeIn 0.3s ease-out' }}>
-          {/* ... existing login prompt ... */}
-          <div style={{ background: 'var(--bg-primary)', borderRadius: '24px', width: '420px', padding: '40px', boxShadow: '0 32px 80px rgba(0,0,0,0.4)', border: '1px solid var(--border-color)', display: 'flex', flexDirection: 'column', gap: '24px', textAlign: 'center', animation: 'slideUpFade 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards' }}>
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '16px' }}>
-              <div style={{ width: '64px', height: '64px', background: 'var(--accent)', borderRadius: '18px', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 8px 16px rgba(var(--accent-rgb), 0.2)' }}>
-                <img src={logo} alt="Logo" style={{ width: '40px', height: '40px', filter: 'brightness(0) invert(1)' }} />
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(12px)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', animation: 'fadeIn 0.4s ease-out' }}>
+          <div style={{ background: 'var(--bg-primary)', borderRadius: '32px', width: '460px', padding: '48px', boxShadow: '0 40px 100px rgba(0,0,0,0.5)', border: '1px solid var(--border-color)', display: 'flex', flexDirection: 'column', gap: '32px', textAlign: 'center', animation: 'slideUpFade 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '20px' }}>
+              <div style={{ width: '72px', height: '72px', background: 'var(--accent)', borderRadius: '22px', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 12px 24px rgba(var(--accent-rgb), 0.3)' }}>
+                <img src={logo} alt="Logo" style={{ width: '44px', height: '44px', filter: 'brightness(0) invert(1)' }} />
               </div>
               <div>
-                <h2 style={{ margin: 0, fontSize: '24px', fontWeight: 800, color: 'var(--text-primary)', letterSpacing: '-0.02em' }}>Welcome to CoFlux</h2>
-                <p style={{ margin: '8px 0 0', fontSize: '14px', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+                <h2 style={{ margin: 0, fontSize: '28px', fontWeight: 800, color: 'var(--text-primary)', letterSpacing: '-0.03em' }}>Welcome to CoFlux</h2>
+                <p style={{ margin: '10px 0 0', fontSize: '15px', color: 'var(--text-secondary)', lineHeight: 1.6, opacity: 0.9 }}>
                   {t('login_prompt_message')}
                 </p>
               </div>
             </div>
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
               <input 
                 type="email" 
-                placeholder="name@example.com" 
+                placeholder={t('placeholder_email')}
                 autoFocus
                 value={loginEmail}
                 onChange={e => setLoginEmail(e.target.value)}
                 onKeyDown={e => e.key === 'Enter' && submitMagicLink()}
-                style={{ width: '100%', padding: '14px 18px', borderRadius: '12px', border: '1px solid var(--border-color)', background: 'var(--bg-secondary)', color: 'var(--text-primary)', fontSize: '15px', outline: 'none', transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)' }}
+                style={{ width: '100%', padding: '16px 20px', borderRadius: '14px', border: '1.5px solid var(--border-color)', background: 'var(--bg-secondary)', color: 'var(--text-primary)', fontSize: '16px', outline: 'none', transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)' }}
               />
               <button 
                 onClick={submitMagicLink}
                 disabled={isSendingLink || !loginEmail.trim()}
-                style={{ width: '100%', padding: '14px', borderRadius: '12px', border: 'none', background: 'var(--text-primary)', color: 'var(--bg-primary)', fontSize: '15px', fontWeight: 700, cursor: (isSendingLink || !loginEmail.trim()) ? 'not-allowed' : 'pointer', opacity: (isSendingLink || !loginEmail.trim()) ? 0.6 : 1, transition: 'all 0.2s', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}
+                style={{ width: '100%', padding: '16px', borderRadius: '14px', border: 'none', background: 'var(--text-primary)', color: 'var(--bg-primary)', fontSize: '16px', fontWeight: 700, cursor: (isSendingLink || !loginEmail.trim()) ? 'not-allowed' : 'pointer', opacity: (isSendingLink || !loginEmail.trim()) ? 0.6 : 1, transition: 'all 0.2s', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
               >
-                {isSendingLink ? '...' : (
+                {isSendingLink ? <Loader2 className="animate-spin" size={20} /> : (
                   <>
                     <span>{t('btn_continue_email')}</span>
-                    <Zap size={14} fill="currentColor" />
+                    <Zap size={16} fill="currentColor" />
                   </>
                 )}
               </button>
             </div>
 
-            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-              <div style={{ flex: 1, height: '1px', background: 'var(--border-color)' }}></div>
-              <span style={{ fontSize: '11px', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600 }}>or local mode</span>
-              <div style={{ flex: 1, height: '1px', background: 'var(--border-color)' }}></div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+              <div style={{ flex: 1, height: '1px', background: 'var(--border-color)', opacity: 0.6 }}></div>
+              <span style={{ fontSize: '12px', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.08em', fontWeight: 700, opacity: 0.7 }}>or local mode</span>
+              <div style={{ flex: 1, height: '1px', background: 'var(--border-color)', opacity: 0.6 }}></div>
             </div>
 
             <button 
               onClick={() => setShowLoginPrompt(false)}
-              style={{ padding: '10px', background: 'transparent', border: 'none', color: 'var(--text-secondary)', fontSize: '13px', fontWeight: 500, cursor: 'pointer', textDecoration: 'underline', opacity: 0.8 }}
+              style={{ padding: '8px', background: 'transparent', border: 'none', color: 'var(--text-secondary)', fontSize: '14px', fontWeight: 600, cursor: 'pointer', opacity: 0.7, transition: 'opacity 0.2s' }}
+              onMouseOver={e => (e.currentTarget.style.opacity = '1')}
+              onMouseOut={e => (e.currentTarget.style.opacity = '0.7')}
             >
               로그인 없이 계속하기 (로컬 전용)
             </button>
