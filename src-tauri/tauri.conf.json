@@ -39,6 +39,12 @@
       "schemes": [
         "coflux"
       ]
+    },
+    "updater": {
+      "endpoints": [
+        "https://github.com/karl3/coflux/releases/latest/download/latest.json"
+      ],
+      "pubkey": "CONTENT_TO_BE_REPLACED_BY_USER_GENERATED_KEY"
     }
   }
 }

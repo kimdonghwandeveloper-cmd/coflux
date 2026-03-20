@@ -8,6 +8,7 @@ import { ScriptEditorModal } from './components/ScriptEditor';
 import { Menu, Search, Users, Bell, Sparkles, Zap, Code2, GitBranch } from 'lucide-react';
 import { AiChatWidget } from './components/AiChatWidget';
 import { KnowledgeMap } from './components/KnowledgeMap';
+import { Updater } from './components/Updater';
 import { invoke } from '@tauri-apps/api/core';
 import { onOpenUrl } from '@tauri-apps/plugin-deep-link';
 import { applyTheme, resolveTheme, WorkspaceTheme, PRESET_THEMES, getContrastColor } from './lib/theme';
@@ -552,9 +553,9 @@ function App() {
         />
       )}
 
-      {/* E28: Initial Login Prompt Modal */}
       {showLoginPrompt && !user && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(8px)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', animation: 'fadeIn 0.3s ease-out' }}>
+          {/* ... existing login prompt ... */}
           <div style={{ background: 'var(--bg-primary)', borderRadius: '24px', width: '420px', padding: '40px', boxShadow: '0 32px 80px rgba(0,0,0,0.4)', border: '1px solid var(--border-color)', display: 'flex', flexDirection: 'column', gap: '24px', textAlign: 'center', animation: 'slideUpFade 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards' }}>
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '16px' }}>
               <div style={{ width: '64px', height: '64px', background: 'var(--accent)', borderRadius: '18px', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 8px 16px rgba(var(--accent-rgb), 0.2)' }}>
@@ -607,6 +608,7 @@ function App() {
           </div>
         </div>
       )}
+      <Updater />
     </div>
   );
 }
