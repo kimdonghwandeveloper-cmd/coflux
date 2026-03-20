@@ -51,11 +51,13 @@ pub fn run() {
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_dialog::init())
-        .plugin(tauri_plugin_updater::init())
         .plugin(tauri_plugin_process::init())
         .manage(webrtc_core::WebRtcState::new())
         .plugin(tauri_plugin_opener::init())
         .setup(|app| {
+            #[cfg(desktop)]
+            app.handle().plugin(tauri_plugin_updater::Builder::new().build())?;
+
             os_hooks::start_os_listener(app.handle().clone());
             if let Err(e) = db_core::init_db(app.handle()) {
                 eprintln!("Failed to init SQLite: {}", e);
