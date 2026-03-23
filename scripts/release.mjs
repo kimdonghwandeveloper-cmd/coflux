@@ -74,7 +74,7 @@ try {
   execSync(`git push origin ${tagName}`);
   
   console.log(`\n✨ Successfully released ${tagName}!`);
-  console.log('🔗 Check your GitHub Actions tab to monitor the MSI/EXE build progress.');
+  console.log('🔗 Check your GitHub Actions tab to monitor the MSI/EXE and DMG/APP build progress.');
 } catch (e) {
   console.error('\n❌ Error during git operations:', e.message);
   process.exit(1);
