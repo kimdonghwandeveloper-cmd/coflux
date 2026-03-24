@@ -414,7 +414,7 @@ function App() {
               </div>
 
               {searchFocused && searchQuery.trim() && (
-                <div style={{ position: 'absolute', top: '40px', left: 0, width: '320px', background: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '8px', boxShadow: '0 4px 16px rgba(0,0,0,0.12)', zIndex: 300, padding: '4px', maxHeight: '300px', overflow: 'auto' }}>
+                <div className="glass-panel" style={{ position: 'absolute', top: '40px', left: 0, width: '320px', borderRadius: '8px', zIndex: 300, padding: '4px', maxHeight: '300px', overflow: 'auto' }}>
                   {searchResults.length > 0 ? searchResults.map(p => (
                     <div key={p.id} className="sidebar-item" style={{ margin: 0, padding: '8px 12px' }}
                       onClick={() => { setActivePageId(p.id); setSearchQuery(''); setSearchFocused(false); if (p.workspaceId && p.workspaceId !== activeWorkspaceId) handleSwitchWorkspace(p.workspaceId); }}>
@@ -455,7 +455,7 @@ function App() {
         </div>
 
         {chatOpen && (
-          <div style={{ position: 'absolute', top: '70px', right: '24px', zIndex: 100, width: '360px', height: '500px', background: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '12px', boxShadow: '0 8px 30px rgba(0,0,0,0.12)', display: 'flex', flexDirection: 'column', overflow: 'hidden', animation: 'slideUpFade 0.3s ease-out forwards' }}>
+          <div className="glass-panel" style={{ position: 'absolute', top: '70px', right: '24px', zIndex: 100, width: '360px', height: '500px', borderRadius: '12px', display: 'flex', flexDirection: 'column', overflow: 'hidden', animation: 'slideUpFade 0.3s ease-out forwards' }}>
             <AiChatWidget 
               connState="Connected!" 
               pageTitle={pages.find(p => p.id === activePageId)?.title}
@@ -555,7 +555,7 @@ function App() {
 
       {showLoginPrompt && !user && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(12px)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', animation: 'fadeIn 0.4s ease-out' }}>
-          <div style={{ background: 'var(--bg-primary)', borderRadius: '32px', width: '460px', padding: '48px', boxShadow: '0 40px 100px rgba(0,0,0,0.5)', border: '1px solid var(--border-color)', display: 'flex', flexDirection: 'column', gap: '32px', textAlign: 'center', animation: 'slideUpFade 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards' }}>
+          <div className="glass-panel" style={{ borderRadius: '32px', width: '460px', padding: '48px', display: 'flex', flexDirection: 'column', gap: '32px', textAlign: 'center', animation: 'slideUpFade 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards' }}>
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '20px' }}>
               <div style={{ width: '72px', height: '72px', background: 'var(--accent)', borderRadius: '22px', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 12px 24px rgba(var(--accent-rgb), 0.3)' }}>
                 <img src={logo} alt="Logo" style={{ width: '44px', height: '44px', filter: 'brightness(0) invert(1)' }} />

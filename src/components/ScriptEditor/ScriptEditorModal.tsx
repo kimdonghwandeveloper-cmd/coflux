@@ -270,15 +270,13 @@ export const ScriptEditorModal = ({ onClose }: { onClose: () => void }) => {
       onClick={onClose}
     >
       <div
+        className="glass-panel"
         style={{
-          background: "var(--bg-primary)",
           borderRadius: "12px",
           width: "960px",
           height: "75vh",
           display: "flex",
           flexDirection: "column",
-          boxShadow: "0 16px 48px rgba(0,0,0,0.2)",
-          border: "1px solid var(--border-color)",
           overflow: "hidden",
         }}
         onClick={(e) => e.stopPropagation()}

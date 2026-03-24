@@ -137,6 +137,9 @@ export const Sidebar = ({
   const [showWsDropdown, setShowWsDropdown] = useState(false);
   const [showTrash, setShowTrash] = useState(false);
   
+  const [sidebarWidth, setSidebarWidth] = useState(260);
+  const [isResizing, setIsResizing] = useState(false);
+
   useEffect(() => {
     const checkInsights = async () => {
       try {
@@ -186,6 +189,28 @@ export const Sidebar = ({
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
+
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!isResizing) return;
+      let newWidth = e.clientX;
+      if (newWidth < 200) newWidth = 200; // minimum
+      if (newWidth > 600) newWidth = 600; // maximum
+      setSidebarWidth(newWidth);
+    };
+    const handleMouseUp = () => {
+      if (isResizing) setIsResizing(false);
+    };
+    
+    if (isResizing) {
+      document.addEventListener('mousemove', handleMouseMove);
+      document.addEventListener('mouseup', handleMouseUp);
+    }
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [isResizing]);
 
   const toggleExpand = (id: string) => {
     setExpandedIds(prev => {
@@ -243,7 +268,31 @@ export const Sidebar = ({
   );
 
   return (
-    <div className="sidebar" style={{ paddingTop: '12px' }}>
+    <div className="sidebar" style={{ 
+      paddingTop: '12px', 
+      width: `${sidebarWidth}px`, 
+      minWidth: `${sidebarWidth}px`, 
+      transition: isResizing ? 'none' : 'width 0.3s cubic-bezier(0.2, 0.8, 0.2, 1), background-color 0.3s',
+      position: 'relative' 
+    }}>
+      {/* Drag handle */}
+      <div 
+        onMouseDown={(e) => { e.preventDefault(); setIsResizing(true); }}
+        style={{
+          position: 'absolute',
+          top: 0,
+          right: '-2px', // cover the border perfectly
+          width: '6px',
+          height: '100%',
+          cursor: 'col-resize',
+          zIndex: 50,
+          backgroundColor: isResizing ? 'var(--accent)' : 'transparent',
+          transition: 'background-color 0.2s'
+        }}
+        onMouseOver={e => !isResizing && (e.currentTarget.style.backgroundColor = 'var(--border-color)')}
+        onMouseOut={e => !isResizing && (e.currentTarget.style.backgroundColor = 'transparent')}
+      />
+
       {/* Brand Header */}
       <div style={{ padding: '0 16px 20px', display: 'flex', alignItems: 'center', gap: '8px' }}>
         <img src={logo} alt="Coflux Logo" style={{ width: '28px', height: 'auto' }} />

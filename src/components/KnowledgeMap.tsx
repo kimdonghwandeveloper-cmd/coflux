@@ -460,12 +460,10 @@ function KnowledgeMapContent({
       onClick={onClose}
     >
       <div
+        className="glass-panel"
         style={{
           width: '80vw', height: '75vh',
-          background: 'var(--bg-primary)',
           borderRadius: '14px',
-          border: '1px solid var(--border-color)',
-          boxShadow: '0 20px 60px rgba(0,0,0,0.25)',
           display: 'flex', flexDirection: 'column',
           overflow: 'hidden',
         }}
