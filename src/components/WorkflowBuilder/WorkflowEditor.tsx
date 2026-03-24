@@ -207,7 +207,7 @@ export const WorkflowEditor = ({ workflow, onSave, onCancel }: WorkflowEditorPro
   };
 
   return (
-    <div style={{ height: "100%", display: "flex", flexDirection: "column" }}>
+    <div style={{ height: "65vh", minHeight: "500px", display: "flex", flexDirection: "column" }}>
       {/* Top Header Navigation */}
       <div style={{ padding: "12px 24px", borderBottom: "1px solid var(--border-color)", display: "flex", justifyContent: "space-between", alignItems: "center", background: "var(--bg-primary)" }}>
          <div style={{ display: "flex", gap: "12px", alignItems: "center" }}>
