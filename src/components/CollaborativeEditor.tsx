@@ -331,15 +331,18 @@ const CollaborativeEditor = ({ provider, currentTheme, workspaceTheme, onAddSubP
   });
 
   // Listen for AI page generation markdown inject event
+  const injectedPagesRef = useRef<Set<string>>(new Set());
   useEffect(() => {
     const handler = async (e: any) => {
       const { pageId: targetPageId, markdown } = e.detail;
-      if (targetPageId === pageId && editor) {
+      if (targetPageId === pageId && editor && !injectedPagesRef.current.has(targetPageId)) {
+        injectedPagesRef.current.add(targetPageId);
         try {
           const blocks = await editor.tryParseMarkdownToBlocks(markdown);
           editor.replaceBlocks(editor.document, blocks);
         } catch (err) {
           console.error('[Canvas] Failed to parse markdown:', err);
+          injectedPagesRef.current.delete(targetPageId); // allow retry on failure
         }
       }
     };

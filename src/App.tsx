@@ -467,9 +467,17 @@ function App() {
                   setPages(prev => [...prev, newPage]);
                   setActivePageId(newId);
                   
-                  setTimeout(() => {
-                    window.dispatchEvent(new CustomEvent('coflux-inject-markdown', { detail: { pageId: newId, markdown } }));
-                  }, 150);
+                  // Retry-based injection: the new editor may not be mounted yet,
+                  // so we dispatch the event multiple times with increasing delays.
+                  const injectMarkdown = (attempt: number) => {
+                    if (attempt > 10) return; // give up after ~3s
+                    setTimeout(() => {
+                      window.dispatchEvent(new CustomEvent('coflux-inject-markdown', { detail: { pageId: newId, markdown } }));
+                      // Schedule next retry in case the editor wasn't ready
+                      injectMarkdown(attempt + 1);
+                    }, 200 + attempt * 100);
+                  };
+                  injectMarkdown(0);
                   setChatOpen(false);
                 } catch (e) { console.error(e); }
               }}
