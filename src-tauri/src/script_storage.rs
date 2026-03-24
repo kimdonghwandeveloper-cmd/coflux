@@ -71,10 +71,8 @@ pub fn get_user_scripts() -> Result<Vec<ScriptData>, String> {
         .map_err(|e| e.to_string())?;
 
     let mut result = Vec::new();
-    for item in iter {
-        if let Ok(s) = item {
-            result.push(s);
-        }
+    for s in iter.flatten() {
+        result.push(s);
     }
     Ok(result)
 }

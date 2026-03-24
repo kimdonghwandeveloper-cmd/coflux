@@ -86,10 +86,8 @@ pub fn get_workflows() -> Result<Vec<WorkflowData>, String> {
         .map_err(|e| e.to_string())?;
 
     let mut result = Vec::new();
-    for item in iter {
-        if let Ok(w) = item {
-            result.push(w);
-        }
+    for w in iter.flatten() {
+        result.push(w);
     }
     Ok(result)
 }
@@ -179,10 +177,8 @@ pub fn get_workflow_logs(workflow_id: String) -> Result<Vec<WorkflowLogEntry>, S
         .map_err(|e| e.to_string())?;
 
     let mut result = Vec::new();
-    for item in iter {
-        if let Ok(log) = item {
-            result.push(log);
-        }
+    for log in iter.flatten() {
+        result.push(log);
     }
     Ok(result)
 }

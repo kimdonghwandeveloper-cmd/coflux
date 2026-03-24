@@ -154,11 +154,11 @@ pub fn init_db(app_handle: &tauri::AppHandle) -> Result<()> {
 // ── Workspace CRUD ──────────────────────────────────────────
 
 #[tauri::command]
-pub fn get_workspaces() -> Result<Vec<WorkspaceData>, String> {
+pub fn get_workspaces() -> crate::error::AppResult<Vec<WorkspaceData>> {
     if let Some(conn) = DB_CONN.lock().unwrap().as_ref() {
         let mut stmt = conn
             .prepare("SELECT id, name, icon, created_at FROM workspaces ORDER BY created_at ASC")
-            .map_err(|e| e.to_string())?;
+            ?;
         let iter = stmt
             .query_map([], |row| {
                 Ok(WorkspaceData {
@@ -168,55 +168,53 @@ pub fn get_workspaces() -> Result<Vec<WorkspaceData>, String> {
                     created_at: row.get(3)?,
                 })
             })
-            .map_err(|e| e.to_string())?;
+            ?;
         let mut result = Vec::new();
-        for ws in iter {
-            if let Ok(w) = ws { result.push(w); }
-        }
+        for w in iter.flatten() { result.push(w); }
         Ok(result)
     } else {
-        Err("Database not initialized".into())
+        Err(crate::error::AppError::Internal("Database not initialized".into()))
     }
 }
 
 #[tauri::command]
-pub fn save_workspace(workspace: WorkspaceData) -> Result<(), String> {
+pub fn save_workspace(workspace: WorkspaceData) -> crate::error::AppResult<()> {
     if let Some(conn) = DB_CONN.lock().unwrap().as_ref() {
         conn.execute(
             "INSERT INTO workspaces (id, name, icon, created_at) VALUES (?1, ?2, ?3, ?4)
              ON CONFLICT(id) DO UPDATE SET name=excluded.name, icon=excluded.icon",
             params![workspace.id, workspace.name, workspace.icon, workspace.created_at],
-        ).map_err(|e| e.to_string())?;
+        )?;
         Ok(())
     } else {
-        Err("Database not initialized".into())
+        Err(crate::error::AppError::Internal("Database not initialized".into()))
     }
 }
 
 #[tauri::command]
-pub fn delete_workspace(workspace_id: String) -> Result<(), String> {
+pub fn delete_workspace(workspace_id: String) -> crate::error::AppResult<()> {
     if let Some(conn) = DB_CONN.lock().unwrap().as_ref() {
         // Delete all pages belonging to this workspace
         conn.execute("DELETE FROM yjs_updates WHERE page_id IN (SELECT id FROM pages WHERE workspace_id = ?1)", params![&workspace_id])
-            .map_err(|e| e.to_string())?;
+            ?;
         conn.execute("DELETE FROM pages WHERE workspace_id = ?1", params![&workspace_id])
-            .map_err(|e| e.to_string())?;
+            ?;
         conn.execute("DELETE FROM workspaces WHERE id = ?1", params![&workspace_id])
-            .map_err(|e| e.to_string())?;
+            ?;
         Ok(())
     } else {
-        Err("Database not initialized".into())
+        Err(crate::error::AppError::Internal("Database not initialized".into()))
     }
 }
 
 // ── Page CRUD ───────────────────────────────────────────────
 
 #[tauri::command]
-pub fn get_pages() -> Result<Vec<PageData>, String> {
+pub fn get_pages() -> crate::error::AppResult<Vec<PageData>> {
     if let Some(conn) = DB_CONN.lock().unwrap().as_ref() {
         let mut stmt = conn
             .prepare("SELECT id, title, icon, updated_at, cover_image, is_favorite, workspace_id, parent_id, is_deleted, sort_order FROM pages ORDER BY sort_order ASC")
-            .map_err(|e| e.to_string())?;
+            ?;
         let page_iter = stmt
             .query_map([], |row| {
                 Ok(PageData {
@@ -232,36 +230,34 @@ pub fn get_pages() -> Result<Vec<PageData>, String> {
                     sort_order: row.get(9).unwrap_or(Some(0)),
                 })
             })
-            .map_err(|e| e.to_string())?;
+            ?;
 
         let mut pages = Vec::new();
-        for page in page_iter {
-            if let Ok(p) = page {
-                pages.push(p);
-            }
+        for p in page_iter.flatten() {
+            pages.push(p);
         }
         Ok(pages)
     } else {
-        Err("Database not initialized".into())
+        Err(crate::error::AppError::Internal("Database not initialized".into()))
     }
 }
 
 #[tauri::command]
-pub fn save_page(page: PageData) -> Result<(), String> {
+pub fn save_page(page: PageData) -> crate::error::AppResult<()> {
     if let Some(conn) = DB_CONN.lock().unwrap().as_ref() {
         conn.execute(
             "INSERT INTO pages (id, title, icon, updated_at, cover_image, is_favorite, workspace_id, parent_id, is_deleted, sort_order) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
              ON CONFLICT(id) DO UPDATE SET title=excluded.title, icon=excluded.icon, updated_at=excluded.updated_at, cover_image=excluded.cover_image, is_favorite=excluded.is_favorite, workspace_id=excluded.workspace_id, parent_id=excluded.parent_id, is_deleted=excluded.is_deleted, sort_order=excluded.sort_order",
             params![page.id, page.title, page.icon, page.updated_at, page.cover_image, page.is_favorite, page.workspace_id, page.parent_id, page.is_deleted, page.sort_order]
-        ).map_err(|e| e.to_string())?;
+        )?;
         Ok(())
     } else {
-        Err("Database not initialized".into())
+        Err(crate::error::AppError::Internal("Database not initialized".into()))
     }
 }
 
 #[tauri::command]
-pub fn delete_page(page_id: String) -> Result<(), String> {
+pub fn delete_page(page_id: String) -> crate::error::AppResult<()> {
     if let Some(conn) = DB_CONN.lock().unwrap().as_ref() {
         // Soft delete: set is_deleted = true for page and all children
         let mut ids = vec![page_id.clone()];
@@ -269,186 +265,184 @@ pub fn delete_page(page_id: String) -> Result<(), String> {
         while i < ids.len() {
             let cid = ids[i].clone();
             let mut stmt = conn.prepare("SELECT id FROM pages WHERE parent_id = ?1")
-                .map_err(|e| e.to_string())?;
+                ?;
             let children = stmt.query_map(params![&cid], |row| row.get::<_, String>(0))
-                .map_err(|e| e.to_string())?;
-            for c in children { if let Ok(id) = c { ids.push(id); } }
+                ?;
+            for id in children.flatten() { ids.push(id); }
             i += 1;
         }
         for id in &ids {
             conn.execute("UPDATE pages SET is_deleted = 1 WHERE id = ?1", params![id])
-                .map_err(|e| e.to_string())?;
+                ?;
         }
         Ok(())
     } else {
-        Err("Database not initialized".into())
+        Err(crate::error::AppError::Internal("Database not initialized".into()))
     }
 }
 
 #[tauri::command]
-pub fn restore_page(page_id: String) -> Result<(), String> {
+pub fn restore_page(page_id: String) -> crate::error::AppResult<()> {
     if let Some(conn) = DB_CONN.lock().unwrap().as_ref() {
         let mut ids = vec![page_id.clone()];
         let mut i = 0;
         while i < ids.len() {
             let cid = ids[i].clone();
             let mut stmt = conn.prepare("SELECT id FROM pages WHERE parent_id = ?1")
-                .map_err(|e| e.to_string())?;
+                ?;
             let children = stmt.query_map(params![&cid], |row| row.get::<_, String>(0))
-                .map_err(|e| e.to_string())?;
-            for c in children { if let Ok(id) = c { ids.push(id); } }
+                ?;
+            for id in children.flatten() { ids.push(id); }
             i += 1;
         }
         for id in &ids {
             conn.execute("UPDATE pages SET is_deleted = 0 WHERE id = ?1", params![id])
-                .map_err(|e| e.to_string())?;
+                ?;
         }
         Ok(())
     } else {
-        Err("Database not initialized".into())
+        Err(crate::error::AppError::Internal("Database not initialized".into()))
     }
 }
 
 #[tauri::command]
-pub fn permanently_delete_page(page_id: String) -> Result<(), String> {
+pub fn permanently_delete_page(page_id: String) -> crate::error::AppResult<()> {
     if let Some(conn) = DB_CONN.lock().unwrap().as_ref() {
         let mut ids = vec![page_id.clone()];
         let mut i = 0;
         while i < ids.len() {
             let cid = ids[i].clone();
             let mut stmt = conn.prepare("SELECT id FROM pages WHERE parent_id = ?1")
-                .map_err(|e| e.to_string())?;
+                ?;
             let children = stmt.query_map(params![&cid], |row| row.get::<_, String>(0))
-                .map_err(|e| e.to_string())?;
-            for c in children { if let Ok(id) = c { ids.push(id); } }
+                ?;
+            for id in children.flatten() { ids.push(id); }
             i += 1;
         }
         for id in &ids {
-            conn.execute("DELETE FROM yjs_updates WHERE page_id = ?1", params![id]).map_err(|e| e.to_string())?;
-            conn.execute("DELETE FROM pages WHERE id = ?1", params![id]).map_err(|e| e.to_string())?;
+            conn.execute("DELETE FROM yjs_updates WHERE page_id = ?1", params![id])?;
+            conn.execute("DELETE FROM pages WHERE id = ?1", params![id])?;
         }
         Ok(())
     } else {
-        Err("Database not initialized".into())
+        Err(crate::error::AppError::Internal("Database not initialized".into()))
     }
 }
 
 // ── Yjs CRDT Persistence ────────────────────────────────────
 
 #[tauri::command]
-pub fn save_yjs_update(page_id: String, update_blob: Vec<u8>) -> Result<(), String> {
+pub fn save_yjs_update(page_id: String, update_blob: Vec<u8>) -> crate::error::AppResult<()> {
     if let Some(conn) = DB_CONN.lock().unwrap().as_ref() {
         conn.execute(
             "INSERT INTO yjs_updates (page_id, update_blob) VALUES (?1, ?2)",
             params![page_id, update_blob],
         )
-        .map_err(|e| e.to_string())?;
+        ?;
         Ok(())
     } else {
-        Err("Database not initialized".into())
+        Err(crate::error::AppError::Internal("Database not initialized".into()))
     }
 }
 
 #[tauri::command]
-pub fn get_yjs_updates(page_id: String) -> Result<Vec<Vec<u8>>, String> {
+pub fn get_yjs_updates(page_id: String) -> crate::error::AppResult<Vec<Vec<u8>>> {
     if let Some(conn) = DB_CONN.lock().unwrap().as_ref() {
         let mut stmt = conn
             .prepare("SELECT update_blob FROM yjs_updates WHERE page_id = ?1 ORDER BY id ASC")
-            .map_err(|e| e.to_string())?;
+            ?;
         let update_iter = stmt
             .query_map(params![page_id], |row| row.get(0))
-            .map_err(|e| e.to_string())?;
+            ?;
 
         let mut updates = Vec::new();
-        for update in update_iter {
-            if let Ok(u) = update {
-                updates.push(u);
-            }
+        for u in update_iter.flatten() {
+            updates.push(u);
         }
         Ok(updates)
     } else {
-        Err("Database not initialized".into())
+        Err(crate::error::AppError::Internal("Database not initialized".into()))
     }
 }
 
 // ── Inline Asset Persistence ────────────────────────────────
 
 #[tauri::command]
-pub fn save_asset(id: String, page_id: String, data: String, mime_type: String) -> Result<(), String> {
+pub fn save_asset(id: String, page_id: String, data: String, mime_type: String) -> crate::error::AppResult<()> {
     if let Some(conn) = DB_CONN.lock().unwrap().as_ref() {
         conn.execute(
             "INSERT OR REPLACE INTO page_assets (id, page_id, data, mime_type) VALUES (?1, ?2, ?3, ?4)",
             params![id, page_id, data, mime_type],
-        ).map_err(|e| e.to_string())?;
+        )?;
         Ok(())
     } else {
-        Err("Database not initialized".into())
+        Err(crate::error::AppError::Internal("Database not initialized".into()))
     }
 }
 
 #[tauri::command]
-pub fn get_asset(id: String) -> Result<String, String> {
+pub fn get_asset(id: String) -> crate::error::AppResult<String> {
     if let Some(conn) = DB_CONN.lock().unwrap().as_ref() {
         let data: String = conn.query_row(
             "SELECT data FROM page_assets WHERE id = ?1",
             params![id],
             |row| row.get(0),
-        ).map_err(|e| e.to_string())?;
+        )?;
         Ok(data)
     } else {
-        Err("Database not initialized".into())
+        Err(crate::error::AppError::Internal("Database not initialized".into()))
     }
 }
 // ── Manual Links CRUD ──────────────────────────────────────────
 
 #[tauri::command]
-pub fn coflux_add_manual_link(source_id: String, target_id: String) -> Result<(), String> {
+pub fn coflux_add_manual_link(source_id: String, target_id: String) -> crate::error::AppResult<()> {
     if let Some(conn) = DB_CONN.lock().unwrap().as_ref() {
         conn.execute(
             "INSERT OR IGNORE INTO manual_links (source_page_id, target_page_id) VALUES (?1, ?2)",
             params![source_id, target_id],
-        ).map_err(|e| e.to_string())?;
+        )?;
         Ok(())
     } else {
-        Err("Database not initialized".into())
+        Err(crate::error::AppError::Internal("Database not initialized".into()))
     }
 }
 
 #[tauri::command]
-pub fn coflux_remove_manual_link(source_id: String, target_id: String) -> Result<(), String> {
+pub fn coflux_remove_manual_link(source_id: String, target_id: String) -> crate::error::AppResult<()> {
     if let Some(conn) = DB_CONN.lock().unwrap().as_ref() {
         conn.execute(
             "DELETE FROM manual_links WHERE source_page_id = ?1 AND target_page_id = ?2",
             params![source_id, target_id],
-        ).map_err(|e| e.to_string())?;
+        )?;
         Ok(())
     } else {
-        Err("Database not initialized".into())
+        Err(crate::error::AppError::Internal("Database not initialized".into()))
     }
 }
 #[tauri::command]
-pub fn coflux_get_setting(key: String) -> Result<String, String> {
+pub fn coflux_get_setting(key: String) -> crate::error::AppResult<String> {
     if let Some(conn) = DB_CONN.lock().unwrap().as_ref() {
         let value: String = conn.query_row(
             "SELECT value FROM settings WHERE key = ?1",
             params![key],
             |row| row.get(0),
-        ).map_err(|e| e.to_string())?;
+        )?;
         Ok(value)
     } else {
-        Err("Database not initialized".into())
+        Err(crate::error::AppError::Internal("Database not initialized".into()))
     }
 }
 
 #[tauri::command]
-pub fn coflux_set_setting(key: String, value: String) -> Result<(), String> {
+pub fn coflux_set_setting(key: String, value: String) -> crate::error::AppResult<()> {
     if let Some(conn) = DB_CONN.lock().unwrap().as_ref() {
         conn.execute(
             "INSERT OR REPLACE INTO settings (key, value) VALUES (?1, ?2)",
             params![key, value],
-        ).map_err(|e| e.to_string())?;
+        )?;
         Ok(())
     } else {
-        Err("Database not initialized".into())
+        Err(crate::error::AppError::Internal("Database not initialized".into()))
     }
 }

@@ -176,18 +176,16 @@ async fn search_scoped(
     }).map_err(|e| e.to_string())?;
 
     let mut scored: Vec<RagSource> = Vec::new();
-    for row in rows {
-        if let Ok((pid, title, text, blob)) = row {
-            let emb = blob_to_embedding(&blob);
-            let score = cosine_similarity(&query_embedding, &emb);
-            scored.push(RagSource {
-                page_id: Some(pid),
-                title,
-                chunk_text: text,
-                score,
-                url: None,
-            });
-        }
+    for (pid, title, text, blob) in rows.flatten() {
+        let emb = blob_to_embedding(&blob);
+        let score = cosine_similarity(&query_embedding, &emb);
+        scored.push(RagSource {
+            page_id: Some(pid),
+            title,
+            chunk_text: text,
+            score,
+            url: None,
+        });
     }
 
     scored.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));

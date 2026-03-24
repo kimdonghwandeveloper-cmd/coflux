@@ -201,7 +201,7 @@ pub(crate) async fn call_ollama_embeddings(text: &str, base_url: &str, model: &s
 pub async fn coflux_index_page(
     app: tauri::AppHandle,
     page_id: String,
-    title: String,
+    _title: String,
     content: String,
 ) -> Result<usize, String> {
     let provider = crate::db_core::coflux_get_setting("embedding_provider".to_string()).unwrap_or("openai".to_string());
@@ -633,7 +633,7 @@ pub async fn coflux_get_knowledge_activity() -> Result<Vec<PageActivity>, String
     let mut activities = Vec::new();
     let mut max_edits = 1.0f32;
 
-    for (page_id, updated_at) in pages {
+    for (page_id, _updated_at) in pages {
         // 2. 수정 횟수 (yjs_updates count)
         let edit_count: i64 = conn.query_row(
             "SELECT COUNT(*) FROM yjs_updates WHERE page_id = ?1",

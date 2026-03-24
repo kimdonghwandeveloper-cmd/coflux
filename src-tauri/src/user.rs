@@ -1,7 +1,5 @@
 use serde::{Deserialize, Serialize};
 use crate::db_core::DB_CONN;
-use reqwest;
-use serde_json;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct UserProfile {

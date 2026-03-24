@@ -1,3 +1,4 @@
+pub mod error;
 mod ai_channel;
 mod api_keys;
 mod clipboard_sync;
