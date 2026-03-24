@@ -60,8 +60,9 @@ const bridge = {
 
 // Globals to shadow inside user code scope.
 // Listed as parameter names — user code receives `undefined` for all of these.
+// Note: "eval" cannot be used as a parameter name in strict mode, so it is omitted from here 
+// and explicitly nullified below.
 const BLOCKED_GLOBALS = [
-  "eval",
   "Function",
   "fetch",
   "XMLHttpRequest",
@@ -79,6 +80,12 @@ const BLOCKED_GLOBALS = [
 
 self.addEventListener("message", async (event: MessageEvent<BridgeResponseMsg | ExecuteMsg>) => {
   const msg = event.data;
+
+  // Explicitly disable eval in the worker context
+  try {
+    // @ts-ignore
+    self.eval = undefined;
+  } catch (e) {}
 
   // Route bridge responses back to pending Promises
   if (msg.type === "bridge_response") {
