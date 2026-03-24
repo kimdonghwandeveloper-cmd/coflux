@@ -102,10 +102,24 @@ pub(crate) fn decrypt_key_internal(
 
 /// 시스템 프롬프트: CoFlux 아키텍트 페르소나
 fn get_system_prompt() -> &'static str {
-    " 당신은 CoFlux 지식 기반 아키텍트입니다. 단순한 채팅 AI가 아니라 지식의 연결과 구조화를 돕는 전문가입니다.\n\
-    냉철하고 논리적인 분석가형이며, 지나친 친절보다는 정확하고 효율적인 정보를 제공하는 데 집중합니다.\n\
-    CoFlux의 페이지 구조, 워크스페이스 연결 방식, 마크다운 기반의 정리를 완벽히 이해하고 대답합니다.\n\
-    사용자가 요약을 요청하면 단순히 줄이는 것이 아니라, 내용 간의 논리적 결점이나 보완해야 할 점까지 짚어줍니다."
+    "당신은 CoFlux에 내장된 전문 AI 어시스턴트입니다.\n\
+    \n\
+    ## 핵심 역할\n\
+    - 사용자의 지식 그래프(Knowledge Graph)를 체계적으로 연결하고 구조화하는 것을 돕습니다.\n\
+    - 사용자가 작성 중인 문서(Page)의 맥락을 정확히 이해하고, 논리적 결점이나 보완점을 능동적으로 제안합니다.\n\
+    - 단순 요약이 아닌 통찰(Insight)을 제공합니다.\n\
+    \n\
+    ## 응답 규칙\n\
+    1. **한국어** 우선으로 대답하되, 사용자가 영어로 질문하면 영어로 대답합니다.\n\
+    2. 마크다운(Markdown)을 적극 활용하여 가독성 높은 답변을 생성합니다(제목, 목록, 코드 블록, 볼드 등).\n\
+    3. 모호한 질문에는 추측 대신 명확한 확인 질문을 되묻습니다.\n\
+    4. 이전 대화 맥락을 반드시 참고하여 일관성 있는 대화를 유지합니다.\n\
+    5. 답변은 간결하되, 요청에 따라 깊이 있는 설명도 아끼지 않습니다.\n\
+    6. 코드를 생성할 때는 반드시 언어 태그를 포함한 코드 블록(```lang)을 사용합니다.\n\
+    \n\
+    ## 제약 사항\n\
+    - 사용자의 개인 데이터(페이지 내용)가 컨텍스트로 주어졌을 때, 그 내용을 요약 없이 그대로 외부에 노출하지 않습니다.\n\
+    - 확실하지 않은 정보는 '확인이 필요합니다'라고 명시합니다."
 }
 
 // ─── Tauri 커맨드 ─────────────────────────────────────────────────────────────
@@ -209,6 +223,7 @@ pub async fn coflux_external_api_call(
     app: tauri::AppHandle,
     provider: String,
     prompt: String,
+    history: Option<Vec<serde_json::Value>>,
 ) -> Result<String, String> {
     let config = coflux_get_provider_config(provider.clone())?;
     let preferred_model = config["preferred_model"].as_str();
@@ -226,13 +241,18 @@ pub async fn coflux_external_api_call(
     match provider.as_str() {
         "openai" => {
             let model = preferred_model.unwrap_or("gpt-4o-mini");
+            let mut messages = vec![serde_json::json!({ "role": "system", "content": sys_prompt })];
+            // Inject conversation history (last N turns)
+            if let Some(ref hist) = history {
+                for msg in hist.iter().rev().take(20).collect::<Vec<_>>().into_iter().rev() {
+                    messages.push(msg.clone());
+                }
+            }
+            messages.push(serde_json::json!({ "role": "user", "content": prompt }));
             let body = serde_json::json!({
                 "model": model,
-                "messages": [
-                    { "role": "system", "content": sys_prompt },
-                    { "role": "user", "content": prompt }
-                ],
-                "max_tokens": 1024
+                "messages": messages,
+                "max_tokens": 4096
             });
             let res = client
                 .post("https://api.openai.com/v1/chat/completions")
@@ -259,11 +279,18 @@ pub async fn coflux_external_api_call(
         }
         "anthropic" => {
             let model = preferred_model.unwrap_or("claude-3-haiku-20240307");
+            let mut messages = Vec::<serde_json::Value>::new();
+            if let Some(ref hist) = history {
+                for msg in hist.iter().rev().take(20).collect::<Vec<_>>().into_iter().rev() {
+                    messages.push(msg.clone());
+                }
+            }
+            messages.push(serde_json::json!({ "role": "user", "content": prompt }));
             let body = serde_json::json!({
                 "model": model,
-                "max_tokens": 1024,
+                "max_tokens": 4096,
                 "system": sys_prompt,
-                "messages": [{ "role": "user", "content": prompt }]
+                "messages": messages
             });
             let res = client
                 .post("https://api.anthropic.com/v1/messages")
@@ -301,7 +328,7 @@ pub async fn coflux_external_api_call(
                     "parts": [{ "text": format!("{}\n\nUser Question: {}", sys_prompt, prompt) }]
                 }],
                 "generationConfig": {
-                    "maxOutputTokens": 1024
+                    "maxOutputTokens": 4096
                 }
             });
             let res = client
@@ -332,12 +359,17 @@ pub async fn coflux_external_api_call(
                 .unwrap_or("http://localhost:11434".to_string());
             let url = format!("{}/api/chat", base_url.trim_end_matches('/'));
 
+            let mut ollama_msgs = vec![serde_json::json!({ "role": "system", "content": sys_prompt })];
+            if let Some(ref hist) = history {
+                for msg in hist.iter().rev().take(20).collect::<Vec<_>>().into_iter().rev() {
+                    ollama_msgs.push(msg.clone());
+                }
+            }
+            ollama_msgs.push(serde_json::json!({ "role": "user", "content": prompt }));
+
             let body = serde_json::json!({
                 "model": model,
-                "messages": [
-                    { "role": "system", "content": sys_prompt },
-                    { "role": "user", "content": prompt }
-                ],
+                "messages": ollama_msgs,
                 "stream": false
             });
 

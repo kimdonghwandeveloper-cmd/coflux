@@ -84,9 +84,24 @@ export const AiChatWidget = ({
         routedTo = includeWeb ? 'AI Search Assistant' : 'RAG Assistant';
         sources = resp.sources;
       } else {
-        // Standard AI Router
-        const contextPrefix = pageTitle ? `[Context: User is editing page "${pageTitle}"] ` : '';
-        const aiResp = await routeAiTask({ type: 'ai_request', prompt: contextPrefix + userQuery, externalAllowed: true });
+        // Standard AI Router — build conversation history from CRDT
+        const history = messages
+          .slice(-20) // Last 20 messages max
+          .map((m: Message) => ({
+            role: m.type === 'ai' ? 'assistant' as const : 'user' as const,
+            content: m.text,
+          }));
+
+        const contextPrefix = pageTitle
+          ? `[현재 편집 중인 페이지: "${pageTitle}"] `
+          : '';
+
+        const aiResp = await routeAiTask({
+          type: 'ai_request',
+          prompt: contextPrefix + userQuery,
+          externalAllowed: true,
+          history,
+        });
         aiRespText = aiResp.text;
         routedTo = aiResp.routed_to;
       }

@@ -135,7 +135,7 @@ pub async fn coflux_rag_query(
     };
 
     let answer =
-        crate::api_keys::coflux_external_api_call(app, provider.to_string(), prompt).await?;
+        crate::api_keys::coflux_external_api_call(app, provider.to_string(), prompt, None).await?;
 
     Ok(RagResponse {
         answer,

@@ -81,6 +81,7 @@ pub async fn handle_ai_channel_message(
                 app.clone(),
                 p.clone(),
                 req.payload.input.clone(),
+                None,
             )
             .await
             {

@@ -19,8 +19,12 @@ export async function deleteApiKey(provider: Provider): Promise<void> {
 }
 
 /** 외부 AI API 호출. API 키는 Rust 레이어에서만 처리됨. */
-export async function externalApiCall(provider: Provider, prompt: string): Promise<string> {
-  return invoke<string>('coflux_external_api_call', { provider, prompt });
+export async function externalApiCall(
+  provider: Provider,
+  prompt: string,
+  history?: Array<{ role: string; content: string }>
+): Promise<string> {
+  return invoke<string>('coflux_external_api_call', { provider, prompt, history: history ?? null });
 }
 
 // ─── C4: 라우팅 분배 로직 ────────────────────────────────────────────────────
@@ -59,6 +63,7 @@ export const AiPayloadSchema = z.object({
   type: z.literal('ai_request'),
   prompt: z.string().min(1).max(5000),
   externalAllowed: z.boolean().default(false),
+  history: z.array(z.object({ role: z.string(), content: z.string() })).optional(),
 });
 export type AiPayload = z.infer<typeof AiPayloadSchema>;
 
@@ -89,7 +94,7 @@ export const routeAiTask = async (payload: AiPayload): Promise<AiResponse> => {
     for (const provider of providers) {
       if (await hasApiKey(provider)) {
         try {
-          const text = await externalApiCall(provider, validData.prompt);
+          const text = await externalApiCall(provider, validData.prompt, validData.history);
           return { type: 'ai_response', text, routed_to: 'external_api' };
         } catch (e) {
           console.error(`[CoFlux Router] ${provider} 호출 실패:`, e);
