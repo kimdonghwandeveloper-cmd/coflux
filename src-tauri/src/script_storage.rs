@@ -89,7 +89,13 @@ pub fn save_user_script(script: ScriptData) -> Result<(), String> {
            name=excluded.name,
            code=excluded.code,
            updated_at=excluded.updated_at",
-        params![script.id, script.name, script.code, script.created_at, script.updated_at],
+        params![
+            script.id,
+            script.name,
+            script.code,
+            script.created_at,
+            script.updated_at
+        ],
     )
     .map_err(|e| e.to_string())?;
     Ok(())
@@ -101,10 +107,16 @@ pub fn delete_user_script(script_id: String) -> Result<(), String> {
     let conn = conn_guard.as_ref().ok_or("Database not initialized")?;
 
     // Delete script and its isolated storage
-    conn.execute("DELETE FROM script_storage WHERE script_id = ?1", params![&script_id])
-        .map_err(|e| e.to_string())?;
-    conn.execute("DELETE FROM user_scripts WHERE id = ?1", params![&script_id])
-        .map_err(|e| e.to_string())?;
+    conn.execute(
+        "DELETE FROM script_storage WHERE script_id = ?1",
+        params![&script_id],
+    )
+    .map_err(|e| e.to_string())?;
+    conn.execute(
+        "DELETE FROM user_scripts WHERE id = ?1",
+        params![&script_id],
+    )
+    .map_err(|e| e.to_string())?;
     Ok(())
 }
 

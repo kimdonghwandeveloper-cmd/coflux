@@ -60,10 +60,10 @@ pub fn init_api_key_table() -> Result<(), String> {
         [],
     )
     .map_err(|e| e.to_string())?;
-    
+
     // 마이그레이션: 기존 테이블에 preferred_model 컬럼이 없을 경우 추가
     let _ = conn.execute("ALTER TABLE api_keys ADD COLUMN preferred_model TEXT", []);
-    
+
     Ok(())
 }
 
@@ -93,7 +93,10 @@ fn decrypt_api_key(app: &tauri::AppHandle, provider: &str) -> Result<String, Str
 }
 
 /// 내부 모듈에서 API 키를 복호화할 때 사용합니다.
-pub(crate) fn decrypt_key_internal(app: &tauri::AppHandle, provider: &str) -> Result<String, String> {
+pub(crate) fn decrypt_key_internal(
+    app: &tauri::AppHandle,
+    provider: &str,
+) -> Result<String, String> {
     decrypt_api_key(app, provider)
 }
 
@@ -162,12 +165,12 @@ pub fn coflux_get_provider_config(provider: String) -> Result<serde_json::Value,
                 "registered": true,
                 "preferred_model": model
             }))
-        }
+        },
     );
-    
+
     match row {
         Ok(v) => Ok(v),
-        Err(_) => Ok(serde_json::json!({ "registered": false, "preferred_model": null }))
+        Err(_) => Ok(serde_json::json!({ "registered": false, "preferred_model": null })),
     }
 }
 
@@ -216,7 +219,7 @@ pub async fn coflux_external_api_call(
     } else {
         decrypt_api_key(&app, &provider)?
     };
-    
+
     let client = reqwest::Client::new();
     let sys_prompt = get_system_prompt();
 
@@ -245,8 +248,10 @@ pub async fn coflux_external_api_call(
                 return Err(format!("OpenAI 오류 {status}: {text}"));
             }
 
-            let json: serde_json::Value =
-                res.json().await.map_err(|e| format!("OpenAI 응답 파싱 실패: {e}"))?;
+            let json: serde_json::Value = res
+                .json()
+                .await
+                .map_err(|e| format!("OpenAI 응답 파싱 실패: {e}"))?;
             json["choices"][0]["message"]["content"]
                 .as_str()
                 .map(String::from)
@@ -275,8 +280,10 @@ pub async fn coflux_external_api_call(
                 return Err(format!("Anthropic 오류 {status}: {text}"));
             }
 
-            let json: serde_json::Value =
-                res.json().await.map_err(|e| format!("Anthropic 응답 파싱 실패: {e}"))?;
+            let json: serde_json::Value = res
+                .json()
+                .await
+                .map_err(|e| format!("Anthropic 응답 파싱 실패: {e}"))?;
             json["content"][0]["text"]
                 .as_str()
                 .map(String::from)
@@ -285,7 +292,10 @@ pub async fn coflux_external_api_call(
         "google" => {
             let model = preferred_model.unwrap_or("gemini-1.5-flash");
             // Google Gemini API v1beta
-            let url = format!("https://generativelanguage.googleapis.com/v1beta/models/{}:generateContent?key={}", model, api_key);
+            let url = format!(
+                "https://generativelanguage.googleapis.com/v1beta/models/{}:generateContent?key={}",
+                model, api_key
+            );
             let body = serde_json::json!({
                 "contents": [{
                     "parts": [{ "text": format!("{}\n\nUser Question: {}", sys_prompt, prompt) }]
@@ -307,8 +317,10 @@ pub async fn coflux_external_api_call(
                 return Err(format!("Google Gemini 오류 {status}: {text}"));
             }
 
-            let json: serde_json::Value =
-                res.json().await.map_err(|e| format!("Google Gemini 응답 파싱 실패: {e}"))?;
+            let json: serde_json::Value = res
+                .json()
+                .await
+                .map_err(|e| format!("Google Gemini 응답 파싱 실패: {e}"))?;
             json["candidates"][0]["content"]["parts"][0]["text"]
                 .as_str()
                 .map(String::from)
@@ -316,9 +328,10 @@ pub async fn coflux_external_api_call(
         }
         "ollama" => {
             let model = preferred_model.unwrap_or("llama3:8b");
-            let base_url = crate::db_core::coflux_get_setting("ollama_base_url".to_string()).unwrap_or("http://localhost:11434".to_string());
+            let base_url = crate::db_core::coflux_get_setting("ollama_base_url".to_string())
+                .unwrap_or("http://localhost:11434".to_string());
             let url = format!("{}/api/chat", base_url.trim_end_matches('/'));
-            
+
             let body = serde_json::json!({
                 "model": model,
                 "messages": [
@@ -341,8 +354,10 @@ pub async fn coflux_external_api_call(
                 return Err(format!("Ollama 오류 {status}: {text}"));
             }
 
-            let json: serde_json::Value =
-                res.json().await.map_err(|e| format!("Ollama 응답 파싱 실패: {e}"))?;
+            let json: serde_json::Value = res
+                .json()
+                .await
+                .map_err(|e| format!("Ollama 응답 파싱 실패: {e}"))?;
             json["message"]["content"]
                 .as_str()
                 .map(String::from)

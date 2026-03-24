@@ -26,7 +26,11 @@ pub fn start_os_listener(app_handle: tauri::AppHandle) {
         loop {
             thread::sleep(std::time::Duration::from_secs(2));
             let current = if let Ok(last) = LAST_ACTIVITY.lock() {
-                if last.elapsed().as_secs() > 10 { "Away" } else { "Active" }
+                if last.elapsed().as_secs() > 10 {
+                    "Away"
+                } else {
+                    "Active"
+                }
             } else {
                 continue;
             };

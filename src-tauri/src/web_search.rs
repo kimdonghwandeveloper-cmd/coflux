@@ -1,5 +1,5 @@
-use serde::{Deserialize, Serialize};
 use crate::api_keys::decrypt_key_internal;
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct WebSearchResult {
@@ -51,15 +51,24 @@ pub async fn coflux_web_search(
         return Err(format!("Brave Search 오류 {status}: {text}"));
     }
 
-    let json: BraveSearchResponse = res.json().await.map_err(|e| format!("Brave Search 응답 파싱 실패: {e}"))?;
+    let json: BraveSearchResponse = res
+        .json()
+        .await
+        .map_err(|e| format!("Brave Search 응답 파싱 실패: {e}"))?;
 
-    let results = json.web.map(|w| {
-        w.results.into_iter().map(|r| WebSearchResult {
-            title: r.title,
-            url: r.url,
-            snippet: r.description.unwrap_or_default(),
-        }).collect()
-    }).unwrap_or_default();
+    let results = json
+        .web
+        .map(|w| {
+            w.results
+                .into_iter()
+                .map(|r| WebSearchResult {
+                    title: r.title,
+                    url: r.url,
+                    snippet: r.description.unwrap_or_default(),
+                })
+                .collect()
+        })
+        .unwrap_or_default();
 
     Ok(results)
 }

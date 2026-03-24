@@ -87,8 +87,14 @@ pub fn init_db(app_handle: &tauri::AppHandle) -> Result<()> {
     let _ = conn.execute("ALTER TABLE pages ADD COLUMN is_favorite BOOLEAN", []);
     let _ = conn.execute("ALTER TABLE pages ADD COLUMN workspace_id TEXT", []);
     let _ = conn.execute("ALTER TABLE pages ADD COLUMN parent_id TEXT", []);
-    let _ = conn.execute("ALTER TABLE pages ADD COLUMN is_deleted BOOLEAN DEFAULT 0", []);
-    let _ = conn.execute("ALTER TABLE pages ADD COLUMN sort_order INTEGER DEFAULT 0", []);
+    let _ = conn.execute(
+        "ALTER TABLE pages ADD COLUMN is_deleted BOOLEAN DEFAULT 0",
+        [],
+    );
+    let _ = conn.execute(
+        "ALTER TABLE pages ADD COLUMN sort_order INTEGER DEFAULT 0",
+        [],
+    );
     // Create a table for inline assets (images, files)
     conn.execute(
         "CREATE TABLE IF NOT EXISTS page_assets (
@@ -122,8 +128,14 @@ pub fn init_db(app_handle: &tauri::AppHandle) -> Result<()> {
     )?;
 
     // Seed default settings
-    let _ = conn.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('ai_provider', 'openai')", []);
-    let _ = conn.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('embedding_provider', 'openai')", []);
+    let _ = conn.execute(
+        "INSERT OR IGNORE INTO settings (key, value) VALUES ('ai_provider', 'openai')",
+        [],
+    );
+    let _ = conn.execute(
+        "INSERT OR IGNORE INTO settings (key, value) VALUES ('embedding_provider', 'openai')",
+        [],
+    );
     let _ = conn.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('ollama_base_url', 'http://localhost:11434')", []);
 
     // Create a table for custom manual links created in Knowledge Map
@@ -141,10 +153,18 @@ pub fn init_db(app_handle: &tauri::AppHandle) -> Result<()> {
     if ws_count == 0 {
         conn.execute(
             "INSERT INTO workspaces (id, name, icon, created_at) VALUES (?1, ?2, ?3, ?4)",
-            params!["default", "My Workspace", "M", chrono::Local::now().format("%Y-%m-%d").to_string()],
+            params![
+                "default",
+                "My Workspace",
+                "M",
+                chrono::Local::now().format("%Y-%m-%d").to_string()
+            ],
         )?;
         // Assign existing orphan pages to the default workspace
-        let _ = conn.execute("UPDATE pages SET workspace_id = 'default' WHERE workspace_id IS NULL", []);
+        let _ = conn.execute(
+            "UPDATE pages SET workspace_id = 'default' WHERE workspace_id IS NULL",
+            [],
+        );
     }
 
     *DB_CONN.lock().unwrap() = Some(conn);
@@ -157,23 +177,24 @@ pub fn init_db(app_handle: &tauri::AppHandle) -> Result<()> {
 pub fn get_workspaces() -> crate::error::AppResult<Vec<WorkspaceData>> {
     if let Some(conn) = DB_CONN.lock().unwrap().as_ref() {
         let mut stmt = conn
-            .prepare("SELECT id, name, icon, created_at FROM workspaces ORDER BY created_at ASC")
-            ?;
-        let iter = stmt
-            .query_map([], |row| {
-                Ok(WorkspaceData {
-                    id: row.get(0)?,
-                    name: row.get(1)?,
-                    icon: row.get(2)?,
-                    created_at: row.get(3)?,
-                })
+            .prepare("SELECT id, name, icon, created_at FROM workspaces ORDER BY created_at ASC")?;
+        let iter = stmt.query_map([], |row| {
+            Ok(WorkspaceData {
+                id: row.get(0)?,
+                name: row.get(1)?,
+                icon: row.get(2)?,
+                created_at: row.get(3)?,
             })
-            ?;
+        })?;
         let mut result = Vec::new();
-        for w in iter.flatten() { result.push(w); }
+        for w in iter.flatten() {
+            result.push(w);
+        }
         Ok(result)
     } else {
-        Err(crate::error::AppError::Internal("Database not initialized".into()))
+        Err(crate::error::AppError::Internal(
+            "Database not initialized".into(),
+        ))
     }
 }
 
@@ -183,11 +204,18 @@ pub fn save_workspace(workspace: WorkspaceData) -> crate::error::AppResult<()> {
         conn.execute(
             "INSERT INTO workspaces (id, name, icon, created_at) VALUES (?1, ?2, ?3, ?4)
              ON CONFLICT(id) DO UPDATE SET name=excluded.name, icon=excluded.icon",
-            params![workspace.id, workspace.name, workspace.icon, workspace.created_at],
+            params![
+                workspace.id,
+                workspace.name,
+                workspace.icon,
+                workspace.created_at
+            ],
         )?;
         Ok(())
     } else {
-        Err(crate::error::AppError::Internal("Database not initialized".into()))
+        Err(crate::error::AppError::Internal(
+            "Database not initialized".into(),
+        ))
     }
 }
 
@@ -197,13 +225,19 @@ pub fn delete_workspace(workspace_id: String) -> crate::error::AppResult<()> {
         // Delete all pages belonging to this workspace
         conn.execute("DELETE FROM yjs_updates WHERE page_id IN (SELECT id FROM pages WHERE workspace_id = ?1)", params![&workspace_id])
             ?;
-        conn.execute("DELETE FROM pages WHERE workspace_id = ?1", params![&workspace_id])
-            ?;
-        conn.execute("DELETE FROM workspaces WHERE id = ?1", params![&workspace_id])
-            ?;
+        conn.execute(
+            "DELETE FROM pages WHERE workspace_id = ?1",
+            params![&workspace_id],
+        )?;
+        conn.execute(
+            "DELETE FROM workspaces WHERE id = ?1",
+            params![&workspace_id],
+        )?;
         Ok(())
     } else {
-        Err(crate::error::AppError::Internal("Database not initialized".into()))
+        Err(crate::error::AppError::Internal(
+            "Database not initialized".into(),
+        ))
     }
 }
 
@@ -215,22 +249,20 @@ pub fn get_pages() -> crate::error::AppResult<Vec<PageData>> {
         let mut stmt = conn
             .prepare("SELECT id, title, icon, updated_at, cover_image, is_favorite, workspace_id, parent_id, is_deleted, sort_order FROM pages ORDER BY sort_order ASC")
             ?;
-        let page_iter = stmt
-            .query_map([], |row| {
-                Ok(PageData {
-                    id: row.get(0)?,
-                    title: row.get(1)?,
-                    icon: row.get(2)?,
-                    updated_at: row.get(3)?,
-                    cover_image: row.get(4).unwrap_or(None),
-                    is_favorite: row.get(5).unwrap_or(None),
-                    workspace_id: row.get(6).unwrap_or(None),
-                    parent_id: row.get(7).unwrap_or(None),
-                    is_deleted: row.get(8).unwrap_or(Some(false)),
-                    sort_order: row.get(9).unwrap_or(Some(0)),
-                })
+        let page_iter = stmt.query_map([], |row| {
+            Ok(PageData {
+                id: row.get(0)?,
+                title: row.get(1)?,
+                icon: row.get(2)?,
+                updated_at: row.get(3)?,
+                cover_image: row.get(4).unwrap_or(None),
+                is_favorite: row.get(5).unwrap_or(None),
+                workspace_id: row.get(6).unwrap_or(None),
+                parent_id: row.get(7).unwrap_or(None),
+                is_deleted: row.get(8).unwrap_or(Some(false)),
+                sort_order: row.get(9).unwrap_or(Some(0)),
             })
-            ?;
+        })?;
 
         let mut pages = Vec::new();
         for p in page_iter.flatten() {
@@ -238,7 +270,9 @@ pub fn get_pages() -> crate::error::AppResult<Vec<PageData>> {
         }
         Ok(pages)
     } else {
-        Err(crate::error::AppError::Internal("Database not initialized".into()))
+        Err(crate::error::AppError::Internal(
+            "Database not initialized".into(),
+        ))
     }
 }
 
@@ -252,7 +286,9 @@ pub fn save_page(page: PageData) -> crate::error::AppResult<()> {
         )?;
         Ok(())
     } else {
-        Err(crate::error::AppError::Internal("Database not initialized".into()))
+        Err(crate::error::AppError::Internal(
+            "Database not initialized".into(),
+        ))
     }
 }
 
@@ -264,20 +300,21 @@ pub fn delete_page(page_id: String) -> crate::error::AppResult<()> {
         let mut i = 0;
         while i < ids.len() {
             let cid = ids[i].clone();
-            let mut stmt = conn.prepare("SELECT id FROM pages WHERE parent_id = ?1")
-                ?;
-            let children = stmt.query_map(params![&cid], |row| row.get::<_, String>(0))
-                ?;
-            for id in children.flatten() { ids.push(id); }
+            let mut stmt = conn.prepare("SELECT id FROM pages WHERE parent_id = ?1")?;
+            let children = stmt.query_map(params![&cid], |row| row.get::<_, String>(0))?;
+            for id in children.flatten() {
+                ids.push(id);
+            }
             i += 1;
         }
         for id in &ids {
-            conn.execute("UPDATE pages SET is_deleted = 1 WHERE id = ?1", params![id])
-                ?;
+            conn.execute("UPDATE pages SET is_deleted = 1 WHERE id = ?1", params![id])?;
         }
         Ok(())
     } else {
-        Err(crate::error::AppError::Internal("Database not initialized".into()))
+        Err(crate::error::AppError::Internal(
+            "Database not initialized".into(),
+        ))
     }
 }
 
@@ -288,20 +325,21 @@ pub fn restore_page(page_id: String) -> crate::error::AppResult<()> {
         let mut i = 0;
         while i < ids.len() {
             let cid = ids[i].clone();
-            let mut stmt = conn.prepare("SELECT id FROM pages WHERE parent_id = ?1")
-                ?;
-            let children = stmt.query_map(params![&cid], |row| row.get::<_, String>(0))
-                ?;
-            for id in children.flatten() { ids.push(id); }
+            let mut stmt = conn.prepare("SELECT id FROM pages WHERE parent_id = ?1")?;
+            let children = stmt.query_map(params![&cid], |row| row.get::<_, String>(0))?;
+            for id in children.flatten() {
+                ids.push(id);
+            }
             i += 1;
         }
         for id in &ids {
-            conn.execute("UPDATE pages SET is_deleted = 0 WHERE id = ?1", params![id])
-                ?;
+            conn.execute("UPDATE pages SET is_deleted = 0 WHERE id = ?1", params![id])?;
         }
         Ok(())
     } else {
-        Err(crate::error::AppError::Internal("Database not initialized".into()))
+        Err(crate::error::AppError::Internal(
+            "Database not initialized".into(),
+        ))
     }
 }
 
@@ -312,11 +350,11 @@ pub fn permanently_delete_page(page_id: String) -> crate::error::AppResult<()> {
         let mut i = 0;
         while i < ids.len() {
             let cid = ids[i].clone();
-            let mut stmt = conn.prepare("SELECT id FROM pages WHERE parent_id = ?1")
-                ?;
-            let children = stmt.query_map(params![&cid], |row| row.get::<_, String>(0))
-                ?;
-            for id in children.flatten() { ids.push(id); }
+            let mut stmt = conn.prepare("SELECT id FROM pages WHERE parent_id = ?1")?;
+            let children = stmt.query_map(params![&cid], |row| row.get::<_, String>(0))?;
+            for id in children.flatten() {
+                ids.push(id);
+            }
             i += 1;
         }
         for id in &ids {
@@ -325,7 +363,9 @@ pub fn permanently_delete_page(page_id: String) -> crate::error::AppResult<()> {
         }
         Ok(())
     } else {
-        Err(crate::error::AppError::Internal("Database not initialized".into()))
+        Err(crate::error::AppError::Internal(
+            "Database not initialized".into(),
+        ))
     }
 }
 
@@ -337,23 +377,21 @@ pub fn save_yjs_update(page_id: String, update_blob: Vec<u8>) -> crate::error::A
         conn.execute(
             "INSERT INTO yjs_updates (page_id, update_blob) VALUES (?1, ?2)",
             params![page_id, update_blob],
-        )
-        ?;
+        )?;
         Ok(())
     } else {
-        Err(crate::error::AppError::Internal("Database not initialized".into()))
+        Err(crate::error::AppError::Internal(
+            "Database not initialized".into(),
+        ))
     }
 }
 
 #[tauri::command]
 pub fn get_yjs_updates(page_id: String) -> crate::error::AppResult<Vec<Vec<u8>>> {
     if let Some(conn) = DB_CONN.lock().unwrap().as_ref() {
-        let mut stmt = conn
-            .prepare("SELECT update_blob FROM yjs_updates WHERE page_id = ?1 ORDER BY id ASC")
-            ?;
-        let update_iter = stmt
-            .query_map(params![page_id], |row| row.get(0))
-            ?;
+        let mut stmt =
+            conn.prepare("SELECT update_blob FROM yjs_updates WHERE page_id = ?1 ORDER BY id ASC")?;
+        let update_iter = stmt.query_map(params![page_id], |row| row.get(0))?;
 
         let mut updates = Vec::new();
         for u in update_iter.flatten() {
@@ -361,14 +399,21 @@ pub fn get_yjs_updates(page_id: String) -> crate::error::AppResult<Vec<Vec<u8>>>
         }
         Ok(updates)
     } else {
-        Err(crate::error::AppError::Internal("Database not initialized".into()))
+        Err(crate::error::AppError::Internal(
+            "Database not initialized".into(),
+        ))
     }
 }
 
 // ── Inline Asset Persistence ────────────────────────────────
 
 #[tauri::command]
-pub fn save_asset(id: String, page_id: String, data: String, mime_type: String) -> crate::error::AppResult<()> {
+pub fn save_asset(
+    id: String,
+    page_id: String,
+    data: String,
+    mime_type: String,
+) -> crate::error::AppResult<()> {
     if let Some(conn) = DB_CONN.lock().unwrap().as_ref() {
         conn.execute(
             "INSERT OR REPLACE INTO page_assets (id, page_id, data, mime_type) VALUES (?1, ?2, ?3, ?4)",
@@ -376,7 +421,9 @@ pub fn save_asset(id: String, page_id: String, data: String, mime_type: String) 
         )?;
         Ok(())
     } else {
-        Err(crate::error::AppError::Internal("Database not initialized".into()))
+        Err(crate::error::AppError::Internal(
+            "Database not initialized".into(),
+        ))
     }
 }
 
@@ -390,7 +437,9 @@ pub fn get_asset(id: String) -> crate::error::AppResult<String> {
         )?;
         Ok(data)
     } else {
-        Err(crate::error::AppError::Internal("Database not initialized".into()))
+        Err(crate::error::AppError::Internal(
+            "Database not initialized".into(),
+        ))
     }
 }
 // ── Manual Links CRUD ──────────────────────────────────────────
@@ -404,12 +453,17 @@ pub fn coflux_add_manual_link(source_id: String, target_id: String) -> crate::er
         )?;
         Ok(())
     } else {
-        Err(crate::error::AppError::Internal("Database not initialized".into()))
+        Err(crate::error::AppError::Internal(
+            "Database not initialized".into(),
+        ))
     }
 }
 
 #[tauri::command]
-pub fn coflux_remove_manual_link(source_id: String, target_id: String) -> crate::error::AppResult<()> {
+pub fn coflux_remove_manual_link(
+    source_id: String,
+    target_id: String,
+) -> crate::error::AppResult<()> {
     if let Some(conn) = DB_CONN.lock().unwrap().as_ref() {
         conn.execute(
             "DELETE FROM manual_links WHERE source_page_id = ?1 AND target_page_id = ?2",
@@ -417,7 +471,9 @@ pub fn coflux_remove_manual_link(source_id: String, target_id: String) -> crate:
         )?;
         Ok(())
     } else {
-        Err(crate::error::AppError::Internal("Database not initialized".into()))
+        Err(crate::error::AppError::Internal(
+            "Database not initialized".into(),
+        ))
     }
 }
 #[tauri::command]
@@ -430,7 +486,9 @@ pub fn coflux_get_setting(key: String) -> crate::error::AppResult<String> {
         )?;
         Ok(value)
     } else {
-        Err(crate::error::AppError::Internal("Database not initialized".into()))
+        Err(crate::error::AppError::Internal(
+            "Database not initialized".into(),
+        ))
     }
 }
 
@@ -443,6 +501,8 @@ pub fn coflux_set_setting(key: String, value: String) -> crate::error::AppResult
         )?;
         Ok(())
     } else {
-        Err(crate::error::AppError::Internal("Database not initialized".into()))
+        Err(crate::error::AppError::Internal(
+            "Database not initialized".into(),
+        ))
     }
 }

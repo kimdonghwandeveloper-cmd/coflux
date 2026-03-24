@@ -1,16 +1,16 @@
-pub mod error;
 mod ai_channel;
 mod api_keys;
 mod clipboard_sync;
 mod db_core;
 mod embeddings;
+pub mod error;
 mod os_hooks;
-mod web_search;
-mod user;
 mod rag;
 mod script_storage;
 mod security;
 mod theme_store;
+mod user;
+mod web_search;
 mod webrtc_core;
 mod workflows;
 
@@ -57,7 +57,8 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .setup(|app| {
             #[cfg(desktop)]
-            app.handle().plugin(tauri_plugin_updater::Builder::new().build())?;
+            app.handle()
+                .plugin(tauri_plugin_updater::Builder::new().build())?;
 
             os_hooks::start_os_listener(app.handle().clone());
             if let Err(e) = db_core::init_db(app.handle()) {

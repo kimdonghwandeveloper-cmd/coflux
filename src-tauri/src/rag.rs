@@ -46,15 +46,20 @@ pub async fn coflux_rag_query(
         let pid = page_id.as_ref().unwrap();
         let guard = DB_CONN.lock().map_err(|e| e.to_string())?;
         let conn = guard.as_ref().ok_or("DB not initialized")?;
-        
-        let (title, content): (String, String) = conn.query_row(
-            "SELECT title, content FROM pages WHERE id = ?1",
-            rusqlite::params![pid],
-            |row| Ok((row.get(0)?, row.get(1)?))
-        ).map_err(|_| "현재 페이지 정보를 가져올 수 없습니다.".to_string())?;
 
-        local_context.push_str(&format!("--- 현재 페이지 전체 내용 (제목: {}) ---\n{}\n\n", title, content));
-        
+        let (title, content): (String, String) = conn
+            .query_row(
+                "SELECT title, content FROM pages WHERE id = ?1",
+                rusqlite::params![pid],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .map_err(|_| "현재 페이지 정보를 가져올 수 없습니다.".to_string())?;
+
+        local_context.push_str(&format!(
+            "--- 현재 페이지 전체 내용 (제목: {}) ---\n{}\n\n",
+            title, content
+        ));
+
         // 검색 결과 리렉토리에도 추가 (UI 소스 표시용)
         results.push(RagSource {
             page_id: Some(pid.clone()),
@@ -68,15 +73,22 @@ pub async fn coflux_rag_query(
         results = search_scoped(&app, &query, workspace_id, page_id, scope, 5).await?;
         for (i, src) in results.iter().enumerate() {
             if src.page_id.is_some() {
-                local_context.push_str(&format!("--- 로컬 문서 {} (제목: {}) ---\n{}\n\n", i + 1, src.title, src.chunk_text));
+                local_context.push_str(&format!(
+                    "--- 로컬 문서 {} (제목: {}) ---\n{}\n\n",
+                    i + 1,
+                    src.title,
+                    src.chunk_text
+                ));
             }
         }
     }
-    
+
     // 2. 웹 검색 (선택 사항)
     let mut web_context = String::new();
     if include_web.unwrap_or(false) {
-        if let Ok(web_results) = crate::web_search::coflux_web_search(app.clone(), query.clone(), Some(3)).await {
+        if let Ok(web_results) =
+            crate::web_search::coflux_web_search(app.clone(), query.clone(), Some(3)).await
+        {
             for (i, res) in web_results.into_iter().enumerate() {
                 results.push(RagSource {
                     page_id: None,
@@ -85,7 +97,12 @@ pub async fn coflux_rag_query(
                     score: 0.8,
                     url: Some(res.url.clone()),
                 });
-                web_context.push_str(&format!("--- 웹 검색 결과 {} (제목: {}) ---\n{}\n\n", i + 1, res.title, res.snippet));
+                web_context.push_str(&format!(
+                    "--- 웹 검색 결과 {} (제목: {}) ---\n{}\n\n",
+                    i + 1,
+                    res.title,
+                    res.snippet
+                ));
             }
         }
     }
@@ -117,7 +134,8 @@ pub async fn coflux_rag_query(
         "google"
     };
 
-    let answer = crate::api_keys::coflux_external_api_call(app, provider.to_string(), prompt).await?;
+    let answer =
+        crate::api_keys::coflux_external_api_call(app, provider.to_string(), prompt).await?;
 
     Ok(RagResponse {
         answer,
@@ -134,7 +152,7 @@ async fn search_scoped(
     limit: usize,
 ) -> Result<Vec<RagSource>, String> {
     let api_key = crate::api_keys::decrypt_key_internal(app, "openai")?;
-    
+
     let query_embedding = crate::embeddings::call_openai_embeddings(query, &api_key).await?;
 
     let guard = DB_CONN.lock().map_err(|e| e.to_string())?;
@@ -145,7 +163,8 @@ async fn search_scoped(
         FROM page_embeddings e
         JOIN pages p ON e.page_id = p.id
         WHERE (p.is_deleted IS NULL OR p.is_deleted = 0)
-    ".to_string();
+    "
+    .to_string();
 
     let mut params_vec: Vec<rusqlite::types::Value> = Vec::new();
 
@@ -166,14 +185,16 @@ async fn search_scoped(
     }
 
     let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
-    let rows = stmt.query_map(rusqlite::params_from_iter(params_vec), |row| {
-        Ok((
-            row.get::<_, String>(0)?,
-            row.get::<_, String>(1)?,
-            row.get::<_, String>(2)?,
-            row.get::<_, Vec<u8>>(3)?,
-        ))
-    }).map_err(|e| e.to_string())?;
+    let rows = stmt
+        .query_map(rusqlite::params_from_iter(params_vec), |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+                row.get::<_, Vec<u8>>(3)?,
+            ))
+        })
+        .map_err(|e| e.to_string())?;
 
     let mut scored: Vec<RagSource> = Vec::new();
     for (pid, title, text, blob) in rows.flatten() {
@@ -188,8 +209,12 @@ async fn search_scoped(
         });
     }
 
-    scored.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+    scored.sort_by(|a, b| {
+        b.score
+            .partial_cmp(&a.score)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
     scored.truncate(limit);
-    
+
     Ok(scored)
 }

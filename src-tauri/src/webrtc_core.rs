@@ -222,7 +222,10 @@ fn emit_scan_result(app: &tauri::AppHandle, payload: String) {
             let _ = app.emit("webrtc-msg", text);
         }
         ScanDecision::Blocked { explanation } => {
-            eprintln!("[Security] BLOCKED: {}", &explanation[..explanation.len().min(120)]);
+            eprintln!(
+                "[Security] BLOCKED: {}",
+                &explanation[..explanation.len().min(120)]
+            );
             let _ = app.emit("webrtc-msg-blocked", BlockedPayload { explanation });
         }
     }

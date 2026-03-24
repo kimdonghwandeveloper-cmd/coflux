@@ -7,8 +7,8 @@
 ///   { "type": "ai_response", "channel": "ai", "payload": { "result": "...", "routed_to": "external/...", "error": null } }
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-use webrtc::data_channel::RTCDataChannel;
 use webrtc::data_channel::data_channel_message::DataChannelMessage;
+use webrtc::data_channel::RTCDataChannel;
 
 // ─── 메시지 포맷 ──────────────────────────────────────────────────────────────
 
@@ -92,7 +92,10 @@ pub async fn handle_ai_channel_message(
             }
         }
         None => (
-            Err("API 키가 등록되지 않았습니다. Settings에서 OpenAI 또는 Anthropic 키를 등록하세요.".to_string()),
+            Err(
+                "API 키가 등록되지 않았습니다. Settings에서 OpenAI 또는 Anthropic 키를 등록하세요."
+                    .to_string(),
+            ),
             "none".to_string(),
         ),
     };
@@ -101,12 +104,20 @@ pub async fn handle_ai_channel_message(
         Ok(text) => AiChannelResponse {
             msg_type: "ai_response".to_string(),
             channel: "ai".to_string(),
-            payload: AiResponsePayload { result: Some(text), routed_to, error: None },
+            payload: AiResponsePayload {
+                result: Some(text),
+                routed_to,
+                error: None,
+            },
         },
         Err(e) => AiChannelResponse {
             msg_type: "ai_response".to_string(),
             channel: "ai".to_string(),
-            payload: AiResponsePayload { result: None, routed_to, error: Some(e) },
+            payload: AiResponsePayload {
+                result: None,
+                routed_to,
+                error: Some(e),
+            },
         },
     };
 
@@ -132,7 +143,13 @@ async fn send_error(dc: &RTCDataChannel, error: String) {
     let resp = AiChannelResponse {
         msg_type: "ai_response".to_string(),
         channel: "ai".to_string(),
-        payload: AiResponsePayload { result: None, routed_to: "none".to_string(), error: Some(error) },
+        payload: AiResponsePayload {
+            result: None,
+            routed_to: "none".to_string(),
+            error: Some(error),
+        },
     };
-    let _ = dc.send_text(serde_json::to_string(&resp).unwrap_or_default()).await;
+    let _ = dc
+        .send_text(serde_json::to_string(&resp).unwrap_or_default())
+        .await;
 }

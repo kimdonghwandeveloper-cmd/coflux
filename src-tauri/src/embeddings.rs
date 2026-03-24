@@ -42,7 +42,10 @@ pub fn init_embeddings_table() -> Result<(), String> {
     // Migration: Add block_id if it doesn't exist
     let _ = conn.execute("ALTER TABLE page_embeddings ADD COLUMN block_id TEXT", []);
     // Migration: Add unique index for incremental updates
-    let _ = conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_page_block ON page_embeddings(page_id, block_id)", []);
+    let _ = conn.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_page_block ON page_embeddings(page_id, block_id)",
+        [],
+    );
     conn.execute(
         "CREATE TABLE IF NOT EXISTS page_links (
             source_page_id TEXT NOT NULL,
@@ -164,16 +167,20 @@ pub(crate) async fn call_openai_embeddings(text: &str, api_key: &str) -> Result<
         .collect()
 }
 
-pub(crate) async fn call_ollama_embeddings(text: &str, base_url: &str, model: &str) -> Result<Vec<f32>, String> {
+pub(crate) async fn call_ollama_embeddings(
+    text: &str,
+    base_url: &str,
+    model: &str,
+) -> Result<Vec<f32>, String> {
     let _permit = EMBED_SEM.acquire().await.map_err(|e| e.to_string())?;
     let client = reqwest::Client::new();
     let url = format!("{}/api/embeddings", base_url.trim_end_matches('/'));
-    
+
     let body = serde_json::json!({
         "model": model,
         "prompt": text,
     });
-    
+
     let resp = client
         .post(&url)
         .json(&body)
@@ -204,16 +211,21 @@ pub async fn coflux_index_page(
     _title: String,
     content: String,
 ) -> Result<usize, String> {
-    let provider = crate::db_core::coflux_get_setting("embedding_provider".to_string()).unwrap_or("openai".to_string());
-    let ollama_url = crate::db_core::coflux_get_setting("ollama_base_url".to_string()).unwrap_or("http://localhost:11434".to_string());
+    let provider = crate::db_core::coflux_get_setting("embedding_provider".to_string())
+        .unwrap_or("openai".to_string());
+    let ollama_url = crate::db_core::coflux_get_setting("ollama_base_url".to_string())
+        .unwrap_or("http://localhost:11434".to_string());
 
     let chunks = chunk_text(&content, 1000);
     let chunk_count = chunks.len();
 
     for (i, chunk) in chunks.iter().enumerate() {
         let embedding = if provider == "ollama" {
-            let config = crate::api_keys::coflux_get_provider_config("ollama".to_string()).unwrap_or(serde_json::json!({}));
-            let model = config["preferred_model"].as_str().unwrap_or("mxbai-embed-large");
+            let config = crate::api_keys::coflux_get_provider_config("ollama".to_string())
+                .unwrap_or(serde_json::json!({}));
+            let model = config["preferred_model"]
+                .as_str()
+                .unwrap_or("mxbai-embed-large");
             call_ollama_embeddings(chunk, &ollama_url, model).await?
         } else {
             let api_key = crate::api_keys::decrypt_key_internal(&app, "openai")
@@ -238,18 +250,18 @@ pub async fn coflux_index_page(
 
 /// 텍스트에서 위키링크를 파싱하여 page_links 테이블을 업데이트합니다.
 #[tauri::command]
-pub async fn coflux_update_wiki_links(
-    page_id: String,
-    text: String,
-) -> Result<(), String> {
+pub async fn coflux_update_wiki_links(page_id: String, text: String) -> Result<(), String> {
     let linked_titles = extract_wiki_links(&text);
     let guard = DB_CONN.lock().map_err(|e| e.to_string())?;
     let conn = guard.as_ref().ok_or("DB not initialized")?;
-    
+
     // 기존 링크 삭제
-    conn.execute("DELETE FROM page_links WHERE source_page_id = ?1", params![page_id])
-        .map_err(|e| e.to_string())?;
-        
+    conn.execute(
+        "DELETE FROM page_links WHERE source_page_id = ?1",
+        params![page_id],
+    )
+    .map_err(|e| e.to_string())?;
+
     for title in &linked_titles {
         let result: rusqlite::Result<String> = conn.query_row(
             "SELECT id FROM pages WHERE title = ?1 AND (is_deleted IS NULL OR is_deleted = 0)",
@@ -280,16 +292,22 @@ pub async fn coflux_update_block_embedding(
         conn.execute(
             "DELETE FROM page_embeddings WHERE page_id = ?1 AND block_id = ?2",
             params![page_id, block_id],
-        ).map_err(|e| e.to_string())?;
+        )
+        .map_err(|e| e.to_string())?;
         return Ok(());
     }
 
-    let provider = crate::db_core::coflux_get_setting("embedding_provider".to_string()).unwrap_or("openai".to_string());
-    let ollama_url = crate::db_core::coflux_get_setting("ollama_base_url".to_string()).unwrap_or("http://localhost:11434".to_string());
+    let provider = crate::db_core::coflux_get_setting("embedding_provider".to_string())
+        .unwrap_or("openai".to_string());
+    let ollama_url = crate::db_core::coflux_get_setting("ollama_base_url".to_string())
+        .unwrap_or("http://localhost:11434".to_string());
 
     let embedding = if provider == "ollama" {
-        let config = crate::api_keys::coflux_get_provider_config("ollama".to_string()).unwrap_or(serde_json::json!({}));
-        let model = config["preferred_model"].as_str().unwrap_or("mxbai-embed-large");
+        let config = crate::api_keys::coflux_get_provider_config("ollama".to_string())
+            .unwrap_or(serde_json::json!({}));
+        let model = config["preferred_model"]
+            .as_str()
+            .unwrap_or("mxbai-embed-large");
         call_ollama_embeddings(&text, &ollama_url, model).await?
     } else {
         let api_key = crate::api_keys::decrypt_key_internal(&app, "openai")
@@ -319,14 +337,15 @@ pub async fn coflux_delete_block_embeddings(
 ) -> Result<(), String> {
     let guard = DB_CONN.lock().map_err(|e| e.to_string())?;
     let conn = guard.as_ref().ok_or("DB not initialized")?;
-    
+
     for bid in block_ids {
         conn.execute(
             "DELETE FROM page_embeddings WHERE page_id = ?1 AND block_id = ?2",
             params![page_id, bid],
-        ).map_err(|e| e.to_string())?;
+        )
+        .map_err(|e| e.to_string())?;
     }
-    
+
     Ok(())
 }
 
@@ -337,12 +356,17 @@ pub async fn coflux_search_similar(
     query: String,
     limit: usize,
 ) -> Result<Vec<SearchResult>, String> {
-    let provider = crate::db_core::coflux_get_setting("embedding_provider".to_string()).unwrap_or("openai".to_string());
-    let ollama_url = crate::db_core::coflux_get_setting("ollama_base_url".to_string()).unwrap_or("http://localhost:11434".to_string());
+    let provider = crate::db_core::coflux_get_setting("embedding_provider".to_string())
+        .unwrap_or("openai".to_string());
+    let ollama_url = crate::db_core::coflux_get_setting("ollama_base_url".to_string())
+        .unwrap_or("http://localhost:11434".to_string());
 
     let query_embedding = if provider == "ollama" {
-        let config = crate::api_keys::coflux_get_provider_config("ollama".to_string()).unwrap_or(serde_json::json!({}));
-        let model = config["preferred_model"].as_str().unwrap_or("mxbai-embed-large");
+        let config = crate::api_keys::coflux_get_provider_config("ollama".to_string())
+            .unwrap_or(serde_json::json!({}));
+        let model = config["preferred_model"]
+            .as_str()
+            .unwrap_or("mxbai-embed-large");
         call_ollama_embeddings(&query, &ollama_url, model).await?
     } else {
         let api_key = crate::api_keys::decrypt_key_internal(&app, "openai")
@@ -369,11 +393,19 @@ pub async fn coflux_search_similar(
         .map(|(page_id, chunk_text, blob)| {
             let emb = blob_to_embedding(&blob);
             let score = cosine_similarity(&query_embedding, &emb);
-            SearchResult { page_id, chunk_text, score }
+            SearchResult {
+                page_id,
+                chunk_text,
+                score,
+            }
         })
         .collect();
 
-    scored.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+    scored.sort_by(|a, b| {
+        b.score
+            .partial_cmp(&a.score)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
     scored.truncate(limit);
     Ok(scored)
 }
@@ -386,12 +418,17 @@ pub async fn coflux_find_related_pages(
     current_page_id: Option<String>,
     limit: usize,
 ) -> Result<Vec<RelatedPage>, String> {
-    let provider = crate::db_core::coflux_get_setting("embedding_provider".to_string()).unwrap_or("openai".to_string());
-    let ollama_url = crate::db_core::coflux_get_setting("ollama_base_url".to_string()).unwrap_or("http://localhost:11434".to_string());
+    let provider = crate::db_core::coflux_get_setting("embedding_provider".to_string())
+        .unwrap_or("openai".to_string());
+    let ollama_url = crate::db_core::coflux_get_setting("ollama_base_url".to_string())
+        .unwrap_or("http://localhost:11434".to_string());
 
     let query_embedding = if provider == "ollama" {
-        let config = crate::api_keys::coflux_get_provider_config("ollama".to_string()).unwrap_or(serde_json::json!({}));
-        let model = config["preferred_model"].as_str().unwrap_or("mxbai-embed-large");
+        let config = crate::api_keys::coflux_get_provider_config("ollama".to_string())
+            .unwrap_or(serde_json::json!({}));
+        let model = config["preferred_model"]
+            .as_str()
+            .unwrap_or("mxbai-embed-large");
         call_ollama_embeddings(&text, &ollama_url, model).await?
     } else {
         let api_key = crate::api_keys::decrypt_key_internal(&app, "openai")
@@ -403,14 +440,18 @@ pub async fn coflux_find_related_pages(
     let rows: Vec<(String, String, Vec<u8>)> = {
         let guard = DB_CONN.lock().map_err(|e| e.to_string())?;
         let conn = guard.as_ref().ok_or("DB not initialized")?;
-        
+
         // 페이지 제목을 같이 가져오기 위해 조인
-        let mut stmt = conn.prepare("
+        let mut stmt = conn
+            .prepare(
+                "
             SELECT e.page_id, p.title, e.embedding 
             FROM page_embeddings e
             JOIN pages p ON e.page_id = p.id
             WHERE (p.is_deleted IS NULL OR p.is_deleted = 0)
-        ").map_err(|e| e.to_string())?;
+        ",
+            )
+            .map_err(|e| e.to_string())?;
 
         let collected: Vec<(String, String, Vec<u8>)> = stmt
             .query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))
@@ -442,10 +483,18 @@ pub async fn coflux_find_related_pages(
 
     let mut result: Vec<RelatedPage> = page_scores
         .into_iter()
-        .map(|(id, (title, score))| RelatedPage { page_id: id, title, score })
+        .map(|(id, (title, score))| RelatedPage {
+            page_id: id,
+            title,
+            score,
+        })
         .collect();
 
-    result.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+    result.sort_by(|a, b| {
+        b.score
+            .partial_cmp(&a.score)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
     result.truncate(limit);
 
     Ok(result)
@@ -489,7 +538,11 @@ pub fn coflux_get_backlinks(page_id: String) -> Result<Vec<LinkPageInfo>, String
         .map_err(|e| e.to_string())?;
     let rows: Vec<LinkPageInfo> = stmt
         .query_map(params![page_id], |row| {
-            Ok(LinkPageInfo { page_id: row.get(0)?, title: row.get(1)?, icon: row.get(2)? })
+            Ok(LinkPageInfo {
+                page_id: row.get(0)?,
+                title: row.get(1)?,
+                icon: row.get(2)?,
+            })
         })
         .map_err(|e| e.to_string())?
         .filter_map(|r| r.ok())
@@ -515,7 +568,11 @@ pub fn coflux_get_outlinks(page_id: String) -> Result<Vec<LinkPageInfo>, String>
         .map_err(|e| e.to_string())?;
     let rows: Vec<LinkPageInfo> = stmt
         .query_map(params![page_id], |row| {
-            Ok(LinkPageInfo { page_id: row.get(0)?, title: row.get(1)?, icon: row.get(2)? })
+            Ok(LinkPageInfo {
+                page_id: row.get(0)?,
+                title: row.get(1)?,
+                icon: row.get(2)?,
+            })
         })
         .map_err(|e| e.to_string())?
         .filter_map(|r| r.ok())
@@ -532,7 +589,7 @@ pub fn coflux_get_all_links() -> Result<Vec<(String, String)>, String> {
         .prepare(
             "SELECT source_page_id, target_page_id FROM page_links 
              UNION 
-             SELECT source_page_id, target_page_id FROM manual_links"
+             SELECT source_page_id, target_page_id FROM manual_links",
         )
         .map_err(|e| e.to_string())?;
     let rows: Vec<(String, String)> = stmt
@@ -557,9 +614,11 @@ pub async fn coflux_get_all_page_embeddings() -> Result<Vec<PageEmbedding>, Stri
     let conn = guard.as_ref().ok_or("DB not initialized")?;
 
     // 1. 모든 페이지와 그 타이틀 가져오기
-    let mut stmt = conn.prepare("SELECT id, title FROM pages WHERE (is_deleted IS NULL OR is_deleted = 0)")
+    let mut stmt = conn
+        .prepare("SELECT id, title FROM pages WHERE (is_deleted IS NULL OR is_deleted = 0)")
         .map_err(|e| e.to_string())?;
-    let pages: Vec<(String, String)> = stmt.query_map([], |row| Ok((row.get(0)?, row.get(1)?)))
+    let pages: Vec<(String, String)> = stmt
+        .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))
         .map_err(|e| e.to_string())?
         .filter_map(|r| r.ok())
         .collect();
@@ -568,9 +627,11 @@ pub async fn coflux_get_all_page_embeddings() -> Result<Vec<PageEmbedding>, Stri
 
     for (page_id, title) in pages {
         // 2. 해당 페이지의 모든 청크 임베딩 가져오기
-        let mut estmt = conn.prepare("SELECT embedding FROM page_embeddings WHERE page_id = ?1")
+        let mut estmt = conn
+            .prepare("SELECT embedding FROM page_embeddings WHERE page_id = ?1")
             .map_err(|e| e.to_string())?;
-        let blobs: Vec<Vec<u8>> = estmt.query_map(params![page_id], |row| row.get(0))
+        let blobs: Vec<Vec<u8>> = estmt
+            .query_map(params![page_id], |row| row.get(0))
             .map_err(|e| e.to_string())?
             .filter_map(|r| r.ok())
             .collect();
@@ -623,9 +684,11 @@ pub async fn coflux_get_knowledge_activity() -> Result<Vec<PageActivity>, String
     let conn = guard.as_ref().ok_or("DB not initialized")?;
 
     // 1. 모든 페이지 가져오기
-    let mut stmt = conn.prepare("SELECT id, updated_at FROM pages WHERE (is_deleted IS NULL OR is_deleted = 0)")
+    let mut stmt = conn
+        .prepare("SELECT id, updated_at FROM pages WHERE (is_deleted IS NULL OR is_deleted = 0)")
         .map_err(|e| e.to_string())?;
-    let pages: Vec<(String, String)> = stmt.query_map([], |row| Ok((row.get(0)?, row.get(1)?)))
+    let pages: Vec<(String, String)> = stmt
+        .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))
         .map_err(|e| e.to_string())?
         .filter_map(|r| r.ok())
         .collect();
@@ -635,27 +698,32 @@ pub async fn coflux_get_knowledge_activity() -> Result<Vec<PageActivity>, String
 
     for (page_id, _updated_at) in pages {
         // 2. 수정 횟수 (yjs_updates count)
-        let edit_count: i64 = conn.query_row(
-            "SELECT COUNT(*) FROM yjs_updates WHERE page_id = ?1",
-            params![page_id],
-            |row| row.get(0),
-        ).unwrap_or(0);
-        
+        let edit_count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM yjs_updates WHERE page_id = ?1",
+                params![page_id],
+                |row| row.get(0),
+            )
+            .unwrap_or(0);
+
         if (edit_count as f32) > max_edits {
             max_edits = edit_count as f32;
         }
 
         // 3. 최근성 점수 (간단하게 updated_at 문자열 기반 처리)
         // 실제로는 chrono 파싱이 좋으나, 여기선 러프하게 처리하거나 단순히 무시하고 edit_count 위주로 우선 구현
-        
+
         activities.push((page_id, edit_count as f32));
     }
 
     // 4. 정규화 및 최종 점수 산출
-    let results = activities.into_iter().map(|(id, count)| {
-        let score = (count / max_edits).min(1.0);
-        PageActivity { page_id: id, score }
-    }).collect();
+    let results = activities
+        .into_iter()
+        .map(|(id, count)| {
+            let score = (count / max_edits).min(1.0);
+            PageActivity { page_id: id, score }
+        })
+        .collect();
 
     Ok(results)
 }

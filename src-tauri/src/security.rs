@@ -24,6 +24,8 @@ pub fn layer1_filter(payload: &str) -> Result<(), String> {
 pub fn scan_ingress_payload(payload: String) -> ScanDecision {
     match layer1_filter(&payload) {
         Ok(()) => ScanDecision::Safe(payload),
-        Err(reason) => ScanDecision::Blocked { explanation: reason },
+        Err(reason) => ScanDecision::Blocked {
+            explanation: reason,
+        },
     }
 }

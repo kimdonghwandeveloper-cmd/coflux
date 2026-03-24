@@ -1,5 +1,5 @@
-use serde::{Deserialize, Serialize};
 use crate::db_core::DB_CONN;
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct UserProfile {
@@ -40,8 +40,10 @@ pub fn coflux_get_user_profile() -> Result<Option<UserProfile>, String> {
 
 #[tauri::command]
 pub async fn coflux_create_checkout_session(email: Option<String>) -> Result<String, String> {
-    let secret_key = std::env::var("STRIPE_SECRET_KEY").map_err(|_| "STRIPE_SECRET_KEY 환경 변수가 설정되지 않았습니다.")?;
-    let price_id = std::env::var("STRIPE_PRICE_ID").map_err(|_| "STRIPE_PRICE_ID 환경 변수가 설정되지 않았습니다.")?;
+    let secret_key = std::env::var("STRIPE_SECRET_KEY")
+        .map_err(|_| "STRIPE_SECRET_KEY 환경 변수가 설정되지 않았습니다.")?;
+    let price_id = std::env::var("STRIPE_PRICE_ID")
+        .map_err(|_| "STRIPE_PRICE_ID 환경 변수가 설정되지 않았습니다.")?;
 
     let client = reqwest::Client::new();
     let mut params = vec![
@@ -65,17 +67,23 @@ pub async fn coflux_create_checkout_session(email: Option<String>) -> Result<Str
         .map_err(|e| e.to_string())?;
 
     let json: serde_json::Value = res.json().await.map_err(|e| e.to_string())?;
-    
+
     if let Some(url) = json["url"].as_str() {
         Ok(url.to_string())
     } else {
-        Err(format!("Stripe 에러: {}", json["error"]["message"].as_str().unwrap_or("알 수 없는 오류")))
+        Err(format!(
+            "Stripe 에러: {}",
+            json["error"]["message"]
+                .as_str()
+                .unwrap_or("알 수 없는 오류")
+        ))
     }
 }
 
 #[tauri::command]
 pub async fn coflux_open_billing_portal(customer_id: String) -> Result<String, String> {
-    let secret_key = std::env::var("STRIPE_SECRET_KEY").map_err(|_| "STRIPE_SECRET_KEY 환경 변수가 설정되지 않았습니다.")?;
+    let secret_key = std::env::var("STRIPE_SECRET_KEY")
+        .map_err(|_| "STRIPE_SECRET_KEY 환경 변수가 설정되지 않았습니다.")?;
 
     let client = reqwest::Client::new();
     let params = [
@@ -96,7 +104,12 @@ pub async fn coflux_open_billing_portal(customer_id: String) -> Result<String, S
     if let Some(url) = json["url"].as_str() {
         Ok(url.to_string())
     } else {
-        Err(format!("Stripe 에러: {}", json["error"]["message"].as_str().unwrap_or("알 수 없는 오류")))
+        Err(format!(
+            "Stripe 에러: {}",
+            json["error"]["message"]
+                .as_str()
+                .unwrap_or("알 수 없는 오류")
+        ))
     }
 }
 
