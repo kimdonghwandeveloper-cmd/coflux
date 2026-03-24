@@ -1,237 +1,24 @@
-import { useState } from "react";
-import { Plus, ArrowLeft, AlertCircle } from "lucide-react";
+import { useState, useCallback, useMemo } from "react";
+import { ArrowLeft, Save, Plus, AlertCircle, Trash2 } from "lucide-react";
 import {
-  DndContext,
-  closestCenter,
-  PointerSensor,
-  KeyboardSensor,
-  useSensor,
-  useSensors,
-  type DragEndEvent,
-} from "@dnd-kit/core";
-import {
-  SortableContext,
-  sortableKeyboardCoordinates,
-  verticalListSortingStrategy,
-  arrayMove,
-} from "@dnd-kit/sortable";
-import { BlockCard } from "./BlockCard";
+  ReactFlow,
+  ReactFlowProvider,
+  Background,
+  Controls,
+  applyNodeChanges,
+  applyEdgeChanges,
+  addEdge,
+  Node,
+  Edge,
+  Connection,
+  Panel,
+  NodeTypes,
+} from "@xyflow/react";
+import "@xyflow/react/dist/style.css";
 import { WorkflowDefinitionSchema, type WorkflowData } from "../../lib/workflow_engine/types";
-
-// ── Internal editor types (with _uid for dnd-kit) ────────────
-
-type EditorTrigger =
-  | { type: "peer_data_received"; filter?: { content_type?: string } }
-  | { type: "user_status_changed"; filter?: { to_status?: "Active" | "Away" | "" } };
-
-type EditorCondition =
-  | { _uid: string; type: "always" }
-  | { _uid: string; type: "content_length_gt"; value: number };
-
-type EditorAction =
-  | { _uid: string; type: "notify_desktop"; params: { title: string; body: string } }
-  | { _uid: string; type: "save_to_db"; params: { collection: string } }
-  | { _uid: string; type: "send_peer_message"; params: { message: string } }
-  | { _uid: string; type: "log_event"; params: { message: string } };
-
-interface EditorState {
-  name: string;
-  trigger: EditorTrigger;
-  conditions: EditorCondition[];
-  actions: EditorAction[];
-}
-
-// ── Defaults ─────────────────────────────────────────────────
-
-const defaultTrigger = (type: EditorTrigger["type"]): EditorTrigger => {
-  if (type === "user_status_changed")
-    return { type, filter: { to_status: "" } };
-  return { type: "peer_data_received", filter: { content_type: "" } };
-};
-
-const defaultCondition = (): EditorCondition => ({
-  _uid: crypto.randomUUID(),
-  type: "always",
-});
-
-const defaultAction = (): EditorAction => ({
-  _uid: crypto.randomUUID(),
-  type: "notify_desktop",
-  params: { title: "New Event", body: "A workflow event was triggered." },
-});
-
-// ── Helpers ───────────────────────────────────────────────────
-
-const inputStyle: React.CSSProperties = {
-  width: "100%",
-  padding: "6px 10px",
-  borderRadius: "6px",
-  border: "1px solid var(--border-color)",
-  background: "var(--bg-primary)",
-  color: "var(--text-primary)",
-  fontSize: "13px",
-  outline: "none",
-  boxSizing: "border-box",
-};
-
-const selectStyle: React.CSSProperties = { ...inputStyle };
-
-const FieldRow = ({ label, children }: { label: string; children: React.ReactNode }) => (
-  <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-    <span style={{ fontSize: "12px", color: "var(--text-secondary)", minWidth: "70px", flexShrink: 0 }}>
-      {label}
-    </span>
-    <div style={{ flex: 1 }}>{children}</div>
-  </div>
-);
-
-// ── Condition form ────────────────────────────────────────────
-
-const ConditionFields = ({
-  cond,
-  onChange,
-}: {
-  cond: EditorCondition;
-  onChange: (c: EditorCondition) => void;
-}) => (
-  <>
-    <FieldRow label="Type">
-      <select
-        style={selectStyle}
-        value={cond.type}
-        onChange={(e) => {
-          const t = e.target.value as EditorCondition["type"];
-          onChange(
-            t === "content_length_gt"
-              ? { _uid: cond._uid, type: "content_length_gt", value: 100 }
-              : { _uid: cond._uid, type: "always" }
-          );
-        }}
-      >
-        <option value="always">Always (no condition)</option>
-        <option value="content_length_gt">Content Length &gt;</option>
-      </select>
-    </FieldRow>
-    {cond.type === "content_length_gt" && (
-      <FieldRow label="Min chars">
-        <input
-          type="number"
-          style={inputStyle}
-          value={cond.value}
-          min={1}
-          onChange={(e) =>
-            onChange({ ...cond, value: Math.max(1, parseInt(e.target.value) || 1) })
-          }
-        />
-      </FieldRow>
-    )}
-  </>
-);
-
-// ── Action form ───────────────────────────────────────────────
-
-const ActionFields = ({
-  action,
-  onChange,
-}: {
-  action: EditorAction;
-  onChange: (a: EditorAction) => void;
-}) => {
-  const changeType = (t: EditorAction["type"]) => {
-    const uid = action._uid;
-    if (t === "notify_desktop")
-      onChange({ _uid: uid, type: t, params: { title: "New Event", body: "Event triggered." } });
-    else if (t === "save_to_db")
-      onChange({ _uid: uid, type: t, params: { collection: "" } });
-    else if (t === "send_peer_message")
-      onChange({ _uid: uid, type: t, params: { message: "" } });
-    else
-      onChange({ _uid: uid, type: "log_event", params: { message: "" } });
-  };
-
-  return (
-    <>
-      <FieldRow label="Type">
-        <select style={selectStyle} value={action.type} onChange={(e) => changeType(e.target.value as EditorAction["type"])}>
-          <option value="notify_desktop">Desktop Notification</option>
-          <option value="save_to_db">Save to Database</option>
-          <option value="send_peer_message">Send to Peer</option>
-          <option value="log_event">Log Event</option>
-        </select>
-      </FieldRow>
-
-      {action.type === "notify_desktop" && (
-        <>
-          <FieldRow label="Title">
-            <input
-              style={inputStyle}
-              value={action.params.title}
-              onChange={(e) => onChange({ ...action, params: { ...action.params, title: e.target.value } })}
-            />
-          </FieldRow>
-          <FieldRow label="Body">
-            <input
-              style={inputStyle}
-              value={action.params.body}
-              onChange={(e) => onChange({ ...action, params: { ...action.params, body: e.target.value } })}
-            />
-          </FieldRow>
-        </>
-      )}
-
-      {action.type === "save_to_db" && (
-        <FieldRow label="Collection">
-          <input
-            style={inputStyle}
-            placeholder="default"
-            value={action.params.collection}
-            onChange={(e) => onChange({ ...action, params: { collection: e.target.value } })}
-          />
-        </FieldRow>
-      )}
-
-      {action.type === "send_peer_message" && (
-        <FieldRow label="Message">
-          <input
-            style={inputStyle}
-            value={action.params.message}
-            onChange={(e) => onChange({ ...action, params: { message: e.target.value } })}
-          />
-        </FieldRow>
-      )}
-
-      {action.type === "log_event" && (
-        <FieldRow label="Label">
-          <input
-            style={inputStyle}
-            placeholder="optional label"
-            value={action.params.message}
-            onChange={(e) => onChange({ ...action, params: { message: e.target.value } })}
-          />
-        </FieldRow>
-      )}
-    </>
-  );
-};
-
-// ── Section header ────────────────────────────────────────────
-
-const SectionHeader = ({ label, color }: { label: string; color: string }) => (
-  <div
-    style={{
-      fontSize: "11px",
-      fontWeight: 700,
-      textTransform: "uppercase",
-      letterSpacing: "1px",
-      color,
-      marginBottom: "8px",
-    }}
-  >
-    {label}
-  </div>
-);
-
-// ── Main editor ───────────────────────────────────────────────
+import { TriggerNode } from "./nodes/TriggerNode";
+import { ConditionNode } from "./nodes/ConditionNode";
+import { ActionNode } from "./nodes/ActionNode";
 
 interface WorkflowEditorProps {
   workflow: WorkflowData | null;
@@ -239,86 +26,177 @@ interface WorkflowEditorProps {
   onCancel: () => void;
 }
 
+const nodeTypes: NodeTypes = {
+  triggerNode: TriggerNode,
+  conditionNode: ConditionNode,
+  actionNode: ActionNode,
+};
+
 export const WorkflowEditor = ({ workflow, onSave, onCancel }: WorkflowEditorProps) => {
-  const initState = (): EditorState => {
-    if (workflow) {
-      try {
-        const def = JSON.parse(workflow.definition);
-        return {
-          name: workflow.name,
-          trigger: def.trigger ?? { type: "peer_data_received", filter: {} },
-          conditions: (def.conditions ?? []).map((c: object) => ({ ...c, _uid: crypto.randomUUID() })),
-          actions: (def.actions ?? []).map((a: object) => ({ ...a, _uid: crypto.randomUUID() })),
-        };
-      } catch {
-        // fall through to defaults
-      }
+  // Parsing init state with backwards compatibility for old JSON definitions
+  const initNodesAndEdges = () => {
+    if (!workflow) {
+      return {
+        nodes: [{ id: "trigger-1", type: "triggerNode", position: { x: 300, y: 50 }, data: { type: "peer_data_received", filter: { content_type: "" } } }],
+        edges: [],
+      };
     }
-    return {
-      name: "",
-      trigger: { type: "peer_data_received", filter: { content_type: "" } },
-      conditions: [],
-      actions: [defaultAction()],
-    };
+
+    try {
+      const def = JSON.parse(workflow.definition);
+      
+      // If the workflow already has visual UI coordinates saved
+      if (def.ui && def.ui.nodes && def.ui.nodes.length > 0) {
+        return { nodes: def.ui.nodes, edges: def.ui.edges || [] };
+      }
+
+      // Legacy auto-layout generator
+      const nodes: Node[] = [];
+      const edges: Edge[] = [];
+      let yOffset = 50;
+
+      nodes.push({ id: "trigger-1", type: "triggerNode", position: { x: 300, y: yOffset }, data: def.trigger });
+      yOffset += 240;
+
+      let lastId = "trigger-1";
+      (def.conditions || []).forEach((c: any, i: number) => {
+        const id = `cond-${i}`;
+        nodes.push({ id, type: "conditionNode", position: { x: 300, y: yOffset }, data: c });
+        edges.push({ id: `e-${lastId}-${id}`, source: lastId, target: id });
+        lastId = id;
+        yOffset += 240;
+      });
+
+      (def.actions || []).forEach((a: any, i: number) => {
+        const id = `action-${i}`;
+        nodes.push({ id, type: "actionNode", position: { x: 300, y: yOffset }, data: a });
+        edges.push({ id: `e-${lastId}-${id}`, source: lastId, target: id });
+        lastId = id;
+        yOffset += 240;
+      });
+
+      return { nodes, edges };
+    } catch {
+      return {
+        nodes: [{ id: "trigger-1", type: "triggerNode", position: { x: 300, y: 50 }, data: { type: "peer_data_received", filter: {} } }],
+        edges: [],
+      };
+    }
   };
 
-  const [state, setState] = useState<EditorState>(initState);
+  const initialElements = useMemo(() => initNodesAndEdges(), [workflow]);
+  const [nodes, setNodes] = useState<Node[]>(initialElements.nodes);
+  const [edges, setEdges] = useState<Edge[]>(initialElements.edges);
+  const [name, setName] = useState(workflow?.name || "Untitled Workflow");
   const [error, setError] = useState<string | null>(null);
 
-  const sensors = useSensors(
-    useSensor(PointerSensor),
-    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
-  );
+  // Hooking data changes back to React Flow
+  const onNodesChange = useCallback((changes: any) => setNodes((nds) => applyNodeChanges(changes, nds)), []);
+  const onEdgesChange = useCallback((changes: any) => setEdges((eds) => applyEdgeChanges(changes, eds)), []);
+  const onConnect = useCallback((params: Connection | Edge) => setEdges((eds) => addEdge(params, eds)), []);
 
-  const updateCondition = (uid: string, updated: EditorCondition) =>
-    setState((s) => ({ ...s, conditions: s.conditions.map((c) => (c._uid === uid ? updated : c)) }));
+  // Update node data helper mapped inside the node via `onChange` prop
+  const updateNodeData = useCallback((id: string, newData: any) => {
+    setNodes((nds) => nds.map((n) => (n.id === id ? { ...n, data: { ...newData } } : n)));
+  }, []);
 
-  const removeCondition = (uid: string) =>
-    setState((s) => ({ ...s, conditions: s.conditions.filter((c) => c._uid !== uid) }));
+  // Sync data.onChange binding
+  const mappedNodes = useMemo(() => {
+    return nodes.map(n => ({
+      ...n,
+      data: {
+        ...n.data,
+        onChange: (newData: any) => updateNodeData(n.id, newData),
+      }
+    }));
+  }, [nodes, updateNodeData]);
 
-  const updateAction = (uid: string, updated: EditorAction) =>
-    setState((s) => ({ ...s, actions: s.actions.map((a) => (a._uid === uid ? updated : a)) }));
-
-  const removeAction = (uid: string) =>
-    setState((s) => ({ ...s, actions: s.actions.filter((a) => a._uid !== uid) }));
-
-  const handleDragEnd = (list: "conditions" | "actions") => (event: DragEndEvent) => {
-    const { active, over } = event;
-    if (!over || active.id === over.id) return;
-    setState((s) => {
-      const items = s[list] as Array<{ _uid: string }>;
-      const oldIdx = items.findIndex((i) => i._uid === active.id);
-      const newIdx = items.findIndex((i) => i._uid === over.id);
-      return { ...s, [list]: arrayMove(items, oldIdx, newIdx) };
-    });
+  const addNode = (type: "conditionNode" | "actionNode") => {
+    const id = `node-${crypto.randomUUID()}`;
+    const newNode: Node = {
+      id,
+      type,
+      position: { x: 300 + Math.random() * 50, y: 300 + Math.random() * 50 },
+      data: type === "conditionNode" ? { type: "always" } : { type: "notify_desktop", params: { title: "Alert", body: "Executed!" } },
+    };
+    setNodes((nds) => [...nds, newNode]);
   };
 
   const handleSave = () => {
     setError(null);
-    if (!state.name.trim()) { setError("Workflow name is required."); return; }
-    if (state.actions.length === 0) { setError("At least one action is required."); return; }
+    if (!name.trim()) { setError("Workflow name is required."); return; }
 
-    // Strip _uid before serializing
+    // Topological DAG compiler: Traverse from the trigger node
+    const triggers = nodes.filter(n => n.type === "triggerNode");
+    if (triggers.length !== 1) { setError("Workflow must have exactly exactly 1 Trigger node."); return; }
+
+    const conditions: any[] = [];
+    const actions: any[] = [];
+    
+    let currentId = triggers[0].id;
+
+    // A simple edge traversal for strict chain verification
+    const visited = new Set<string>();
+    while (currentId) {
+      if (visited.has(currentId)) { setError("Cycle detected in the workflow graph."); return; }
+      visited.add(currentId);
+      
+      const outgoingEdges = edges.filter(e => e.source === currentId);
+      if (outgoingEdges.length > 1) { setError("Branching nodes are not supported yet. Connect them in a single line."); return; }
+      if (outgoingEdges.length === 0) break;
+      
+      const nextNode = nodes.find(n => n.id === outgoingEdges[0].target);
+      if (!nextNode) break;
+
+      if (nextNode.type === "conditionNode") {
+        if (actions.length > 0) { setError("Condition nodes must run before Action nodes."); return; }
+        // Strip out the onChange function before serializing
+        const cleanData = { ...(nextNode.data as any) };
+        delete cleanData.onChange;
+        conditions.push(cleanData);
+      } else if (nextNode.type === "actionNode") {
+        const cleanData = { ...(nextNode.data as any) };
+        delete cleanData.onChange;
+        actions.push(cleanData);
+      }
+      
+      currentId = nextNode.id;
+    }
+
+    // Support standalone un-connected nodes if they don't want strict drawing? No, strict DAG compilation is safer.
+    if (actions.length === 0) { setError("Workflow must have at least 1 Action node connected to the trigger."); return; }
+
+    const triggerData = { ...(triggers[0].data as any) };
+    delete triggerData.onChange;
+
     const definition = {
       id: workflow ? JSON.parse(workflow.definition).id : crypto.randomUUID(),
-      name: state.name.trim(),
+      name: name.trim(),
       enabled: true,
-      trigger: state.trigger,
-      conditions: state.conditions.map(({ _uid: _, ...rest }) => rest),
-      actions: state.actions.map(({ _uid: _, ...rest }) => rest),
+      trigger: triggerData,
+      conditions,
+      actions,
+      ui: {
+        nodes: nodes.map(n => {
+           const cleanData = { ...(n.data as any) };
+           delete cleanData.onChange;
+           return { ...n, data: cleanData };
+        }),
+        edges
+      }
     };
 
     const parsed = WorkflowDefinitionSchema.safeParse(definition);
     if (!parsed.success) {
-      const first = parsed.error.issues[0];
-      setError(`Validation: ${first.path.join(".")} — ${first.message}`);
+      const err = parsed.error.issues[0];
+      setError(`Validation: ${err.path.join(".")} — ${err.message}`);
       return;
     }
 
     const now = new Date().toISOString();
     const wfData: WorkflowData = {
       id: workflow?.id ?? crypto.randomUUID(),
-      name: state.name.trim(),
+      name: name.trim(),
       enabled: workflow?.enabled ?? true,
       definition: JSON.stringify(parsed.data),
       createdAt: workflow?.createdAt ?? now,
@@ -329,188 +207,67 @@ export const WorkflowEditor = ({ workflow, onSave, onCancel }: WorkflowEditorPro
   };
 
   return (
-    <div style={{ padding: "20px 24px", display: "flex", flexDirection: "column", gap: "20px" }}>
-      {/* Name */}
-      <div>
-        <label style={{ fontSize: "11px", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.5px", color: "var(--text-secondary)", display: "block", marginBottom: "6px" }}>
-          Workflow Name
-        </label>
-        <input
-          style={{ ...inputStyle, fontSize: "15px", fontWeight: 500 }}
-          placeholder="e.g. Code received → notify"
-          value={state.name}
-          onChange={(e) => setState((s) => ({ ...s, name: e.target.value }))}
-        />
+    <div style={{ height: "100%", display: "flex", flexDirection: "column" }}>
+      {/* Top Header Navigation */}
+      <div style={{ padding: "12px 24px", borderBottom: "1px solid var(--border-color)", display: "flex", justifyContent: "space-between", alignItems: "center", background: "var(--bg-primary)" }}>
+         <div style={{ display: "flex", gap: "12px", alignItems: "center" }}>
+           <button onClick={onCancel} style={{ display: "flex", alignItems: "center", gap: "6px", background: "transparent", border: "none", color: "var(--text-secondary)", cursor: "pointer", fontSize: "13px" }}>
+              <ArrowLeft size={16} /> Back
+           </button>
+           <input
+             value={name}
+             onChange={(e) => setName(e.target.value)}
+             placeholder="Workflow Name"
+             style={{ background: "transparent", border: "none", color: "var(--text-primary)", fontSize: "16px", fontWeight: 700, outline: "none", minWidth: "250px" }}
+           />
+         </div>
+         <div style={{ display: "flex", gap: "12px", alignItems: "center" }}>
+           {error && <div style={{ display: "flex", alignItems: "center", gap: "6px", color: "var(--error)", fontSize: "12px", maxWidth: "250px", textOverflow: "ellipsis", overflow: "hidden", whiteSpace: "nowrap" }}><AlertCircle size={14} /> {error}</div>}
+           <button onClick={handleSave} style={{ display: "flex", alignItems: "center", gap: "6px", background: "var(--accent)", color: "white", padding: "8px 16px", borderRadius: "8px", border: "none", cursor: "pointer", fontSize: "13px", fontWeight: 600 }}>
+             <Save size={16} /> Save Active Flow
+           </button>
+         </div>
       </div>
 
-      {/* WHEN */}
-      <div>
-        <SectionHeader label="When" color="var(--accent)" />
-        <div
-          style={{
-            background: "var(--bg-secondary)",
-            border: "1px solid var(--border-color)",
-            borderRadius: "8px",
-            padding: "12px 14px",
-            display: "flex",
-            flexDirection: "column",
-            gap: "8px",
-          }}
-        >
-          <FieldRow label="Event">
-            <select
-              style={selectStyle}
-              value={state.trigger.type}
-              onChange={(e) =>
-                setState((s) => ({
-                  ...s,
-                  trigger: defaultTrigger(e.target.value as EditorTrigger["type"]),
-                }))
-              }
-            >
-              <option value="peer_data_received">Peer Data Received</option>
-              <option value="user_status_changed">User Status Changed</option>
-            </select>
-          </FieldRow>
-
-          {state.trigger.type === "peer_data_received" && (
-            <FieldRow label="Content type">
-              <input
-                style={inputStyle}
-                placeholder="any (optional)"
-                value={state.trigger.filter?.content_type ?? ""}
-                onChange={(e) =>
-                  setState((s) => ({
-                    ...s,
-                    trigger: { ...s.trigger, filter: { content_type: e.target.value } } as EditorTrigger,
-                  }))
-                }
-              />
-            </FieldRow>
-          )}
-
-          {state.trigger.type === "user_status_changed" && (
-            <FieldRow label="To status">
-              <select
-                style={selectStyle}
-                value={(state.trigger as { type: "user_status_changed"; filter?: { to_status?: string } }).filter?.to_status ?? ""}
-                onChange={(e) =>
-                  setState((s) => ({
-                    ...s,
-                    trigger: {
-                      ...s.trigger,
-                      filter: { to_status: e.target.value as "Active" | "Away" | "" },
-                    } as EditorTrigger,
-                  }))
-                }
+      {/* React Flow Visual Canvas */}
+      <div style={{ flex: 1, position: "relative" }}>
+        <ReactFlowProvider>
+          <ReactFlow
+            nodes={mappedNodes}
+            edges={edges}
+            onNodesChange={onNodesChange}
+            onEdgesChange={onEdgesChange}
+            onConnect={onConnect}
+            nodeTypes={nodeTypes}
+            fitView
+            defaultEdgeOptions={{ style: { strokeWidth: 3, stroke: "var(--text-secondary)" }, animated: true }}
+          >
+            <Background color="var(--border-color)" gap={20} size={2} />
+            <Controls />
+            
+            <Panel position="bottom-center" style={{ background: "var(--bg-primary)", padding: "12px", borderRadius: "12px", border: "1px solid var(--border-color)", boxShadow: "0 8px 32px rgba(0,0,0,0.15)", display: "flex", gap: "12px" }}>
+              <button 
+                onClick={() => addNode("conditionNode")}
+                style={{ display: "flex", alignItems: "center", gap: "6px", padding: "8px 12px", borderRadius: "8px", background: "transparent", border: "1px solid #805ad5", color: "#805ad5", cursor: "pointer", fontWeight: 600, fontSize: "13px" }}
               >
-                <option value="">Any transition</option>
-                <option value="Active">Becomes Active</option>
-                <option value="Away">Becomes Away</option>
-              </select>
-            </FieldRow>
-          )}
-        </div>
-      </div>
-
-      {/* IF */}
-      <div>
-        <SectionHeader label="If" color="#805ad5" />
-        <DndContext
-          sensors={sensors}
-          collisionDetection={closestCenter}
-          onDragEnd={handleDragEnd("conditions")}
-        >
-          <SortableContext
-            items={state.conditions.map((c) => c._uid)}
-            strategy={verticalListSortingStrategy}
-          >
-            <div style={{ display: "flex", flexDirection: "column", gap: "8px", marginBottom: "8px" }}>
-              {state.conditions.map((cond) => (
-                <BlockCard
-                  key={cond._uid}
-                  uid={cond._uid}
-                  label={cond.type === "always" ? "Always" : `Content length > ${(cond as { value: number }).value}`}
-                  accent="#805ad5"
-                  onDelete={() => removeCondition(cond._uid)}
-                >
-                  <ConditionFields
-                    cond={cond}
-                    onChange={(updated) => updateCondition(cond._uid, updated)}
-                  />
-                </BlockCard>
-              ))}
-            </div>
-          </SortableContext>
-        </DndContext>
-        <button
-          onClick={() => setState((s) => ({ ...s, conditions: [...s.conditions, defaultCondition()] }))}
-          style={{ display: "flex", alignItems: "center", gap: "4px", fontSize: "12px", color: "var(--text-secondary)", background: "transparent", border: "none", cursor: "pointer", padding: "4px 0" }}
-        >
-          <Plus size={13} /> Add Condition
-        </button>
-      </div>
-
-      {/* THEN */}
-      <div>
-        <SectionHeader label="Then" color="#38a169" />
-        <DndContext
-          sensors={sensors}
-          collisionDetection={closestCenter}
-          onDragEnd={handleDragEnd("actions")}
-        >
-          <SortableContext
-            items={state.actions.map((a) => a._uid)}
-            strategy={verticalListSortingStrategy}
-          >
-            <div style={{ display: "flex", flexDirection: "column", gap: "8px", marginBottom: "8px" }}>
-              {state.actions.map((action) => (
-                <BlockCard
-                  key={action._uid}
-                  uid={action._uid}
-                  label={action.type.replace(/_/g, " ")}
-                  accent="#38a169"
-                  onDelete={() => removeAction(action._uid)}
-                >
-                  <ActionFields
-                    action={action}
-                    onChange={(updated) => updateAction(action._uid, updated)}
-                  />
-                </BlockCard>
-              ))}
-            </div>
-          </SortableContext>
-        </DndContext>
-        <button
-          onClick={() => setState((s) => ({ ...s, actions: [...s.actions, defaultAction()] }))}
-          style={{ display: "flex", alignItems: "center", gap: "4px", fontSize: "12px", color: "var(--text-secondary)", background: "transparent", border: "none", cursor: "pointer", padding: "4px 0" }}
-        >
-          <Plus size={13} /> Add Action
-        </button>
-      </div>
-
-      {/* Error */}
-      {error && (
-        <div style={{ display: "flex", alignItems: "center", gap: "8px", padding: "10px 12px", borderRadius: "6px", background: "rgba(229,62,62,0.08)", border: "1px solid rgba(229,62,62,0.3)", color: "#e53e3e", fontSize: "13px" }}>
-          <AlertCircle size={14} />
-          {error}
-        </div>
-      )}
-
-      {/* Footer buttons */}
-      <div style={{ display: "flex", justifyContent: "space-between", paddingTop: "4px", borderTop: "1px solid var(--border-color)" }}>
-        <button
-          onClick={onCancel}
-          style={{ display: "flex", alignItems: "center", gap: "6px", padding: "8px 14px", borderRadius: "6px", border: "1px solid var(--border-color)", background: "transparent", color: "var(--text-secondary)", fontSize: "13px", cursor: "pointer" }}
-        >
-          <ArrowLeft size={14} /> Back
-        </button>
-        <button
-          onClick={handleSave}
-          style={{ padding: "8px 20px", borderRadius: "6px", border: "none", background: "var(--accent)", color: "white", fontSize: "13px", fontWeight: 600, cursor: "pointer" }}
-        >
-          Save Workflow
-        </button>
+                <Plus size={14} /> Add Condition
+              </button>
+              <button 
+                onClick={() => addNode("actionNode")}
+                style={{ display: "flex", alignItems: "center", gap: "6px", padding: "8px 12px", borderRadius: "8px", background: "transparent", border: "1px solid #38a169", color: "#38a169", cursor: "pointer", fontWeight: 600, fontSize: "13px" }}
+              >
+                <Plus size={14} /> Add Action
+              </button>
+              <div style={{ width: "1px", background: "var(--border-color)", margin: "0 4px" }} />
+              <button 
+                onClick={() => setNodes(nodes.filter(n => n.selected !== true))}
+                style={{ display: "flex", alignItems: "center", gap: "6px", padding: "8px 12px", borderRadius: "8px", background: "rgba(229,62,62,0.1)", border: "none", color: "var(--error)", cursor: "pointer", fontWeight: 600, fontSize: "13px" }}
+              >
+                <Trash2 size={14} /> Delete Selected Node
+              </button>
+            </Panel>
+          </ReactFlow>
+        </ReactFlowProvider>
       </div>
     </div>
   );

@@ -4,8 +4,7 @@ import { Canvas } from './components/Canvas';
 import { Sidebar } from './components/Sidebar';
 import { SettingsModal } from './components/SettingsModal';
 import { WorkflowBuilderModal } from './components/WorkflowBuilder';
-import { ScriptEditorModal } from './components/ScriptEditor';
-import { Menu, Search, Users, Bell, Sparkles, Zap, Code2, GitBranch, Loader2 } from 'lucide-react';
+import { Menu, Search, Users, Bell, Sparkles, Zap, GitBranch, Loader2 } from 'lucide-react';
 import { AiChatWidget } from './components/AiChatWidget';
 import { KnowledgeMap } from './components/KnowledgeMap';
 import { Updater } from './components/Updater';
@@ -51,7 +50,6 @@ function App() {
   const [chatOpen, setChatOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [workflowsOpen, setWorkflowsOpen] = useState(false);
-  const [scriptEditorOpen, setScriptEditorOpen] = useState(false);
   const [knowledgeMapOpen, setKnowledgeMapOpen] = useState(false);
 
   const [user, setUser] = useState<UserProfile | null>(null);
@@ -443,10 +441,6 @@ function App() {
               <Zap size={16} fill={workflowsOpen ? 'currentColor' : 'none'} />
               Workflows
             </button>
-            <button className="notion-btn" style={{ border: 'none', background: 'transparent', gap: '6px', color: scriptEditorOpen ? 'var(--accent)' : 'var(--text-primary)' }} onClick={() => setScriptEditorOpen(!scriptEditorOpen)}>
-              <Code2 size={16} />
-              Scripts
-            </button>
             <button className="notion-btn" style={{ border: 'none', background: 'transparent', gap: '6px', color: chatOpen ? 'var(--accent)' : 'var(--text-primary)' }} onClick={() => setChatOpen(!chatOpen)}>
               <Sparkles size={16} fill={chatOpen ? 'currentColor' : 'none'} />
               AI Assistant
@@ -528,10 +522,6 @@ function App() {
 
       {workflowsOpen && (
         <WorkflowBuilderModal onClose={() => setWorkflowsOpen(false)} />
-      )}
-
-      {scriptEditorOpen && (
-        <ScriptEditorModal onClose={() => setScriptEditorOpen(false)} />
       )}
 
       {settingsOpen && (

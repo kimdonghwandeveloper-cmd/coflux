@@ -75,11 +75,19 @@ export const LogEventActionSchema = z.object({
     .optional(),
 });
 
+export const RunScriptActionSchema = z.object({
+  type: z.literal("run_script"),
+  params: z.object({
+    code: z.string().min(1),
+  }),
+});
+
 export const ActionSchema = z.discriminatedUnion("type", [
   NotifyDesktopActionSchema,
   SaveToDbActionSchema,
   SendPeerMessageActionSchema,
   LogEventActionSchema,
+  RunScriptActionSchema,
 ]);
 
 // ── Workflow Definition Schema ───────────────────────────────
@@ -91,6 +99,12 @@ export const WorkflowDefinitionSchema = z.object({
   trigger: TriggerSchema,
   conditions: z.array(ConditionSchema).default([]),
   actions: z.array(ActionSchema).min(1),
+  ui: z
+    .object({
+      nodes: z.array(z.any()),
+      edges: z.array(z.any()),
+    })
+    .optional(),
 });
 
 // ── IPC Data Schema (Rust ↔ TypeScript) ─────────────────────
