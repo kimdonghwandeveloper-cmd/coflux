@@ -53,6 +53,9 @@ const bridge = {
     warn: (message: string) => self.postMessage({ type: "log", level: "warn", message }),
     error: (message: string) => self.postMessage({ type: "log", level: "error", message }),
   },
+  network: {
+    webhook: (url: string, payload: unknown) => proxyCall("network.webhook", [url, payload]),
+  },
 } as const;
 
 // Globals to shadow inside user code scope.

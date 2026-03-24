@@ -26,6 +26,21 @@ const LOG_COLORS: Record<string, string> = {
   error: "#e53e3e",
 };
 
+const SNIPPETS = [
+  {
+    name: "Send Webhook (POST)",
+    code: `// Send a POST request to an external API/webhook\nconst payload = { event: "script_start", time: new Date() };\nconst res = await bridge.network.webhook("https://httpbin.org/post", payload);\nbridge.log.info(\`Webhook status: \${res.status}\`);`
+  },
+  {
+    name: "Notify Connected Peers",
+    code: `// Send a message to all connected P2P peers\nconst peers = await bridge.peers.list();\nfor (const peer of peers) {\n  await bridge.peers.send(peer.id, "Hello from script!");\n}\nbridge.log.info(\`Sent to \${peers.length} peers\`);`
+  },
+  {
+    name: "Local Notification",
+    code: `// Show a desktop notification\nawait bridge.notify.send("System Alert", "Script execution completed successfully!");`
+  }
+];
+
 // Minimal Prism Tomorrow-like theme for dark/light compatibility
 const prismStyles = `
   .prism-code {
@@ -58,7 +73,19 @@ export const ScriptEditorModal = ({ onClose }: { onClose: () => void }) => {
   const [result, setResult] = useState<ExecutionResult | null>(null);
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [showHelp, setShowHelp] = useState(true);
+  const [showSnippets, setShowSnippets] = useState(false);
   const consoleRef = useRef<HTMLDivElement>(null);
+  const snippetRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (snippetRef.current && !snippetRef.current.contains(e.target as Node)) {
+        setShowSnippets(false);
+      }
+    };
+    if (showSnippets) document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [showSnippets]);
 
   // Custom Undo/Redo stack for the code state
   const undoStack = useRef<string[]>([]);
@@ -451,6 +478,52 @@ export const ScriptEditorModal = ({ onClose }: { onClose: () => void }) => {
                   <Save size={12} /> Save
                 </button>
               )}
+              <div style={{ position: "relative" }} ref={snippetRef}>
+                <button
+                  onClick={() => setShowSnippets(!showSnippets)}
+                  style={{
+                    display: "flex", alignItems: "center", gap: "4px", padding: "5px 10px",
+                    borderRadius: "5px", border: "1px solid var(--border-color)",
+                    background: showSnippets ? "rgba(var(--accent-rgb, 99,102,241),0.1)" : "transparent",
+                    color: showSnippets ? "var(--accent)" : "var(--text-secondary)",
+                    fontSize: "12px", fontWeight: 600, cursor: "pointer", transition: "all 0.2s"
+                  }}
+                >
+                  <Code2 size={13} /> Snippets
+                </button>
+                {showSnippets && (
+                  <div
+                    className="glass-panel"
+                    style={{
+                      position: "absolute", top: "100%", left: 0, marginTop: "4px",
+                      width: "220px", padding: "6px", borderRadius: "8px", zIndex: 100,
+                      display: "flex", flexDirection: "column", gap: "2px",
+                      boxShadow: "0 10px 30px rgba(0,0,0,0.2)"
+                    }}
+                  >
+                    {SNIPPETS.map((snip, i) => (
+                      <div
+                        key={i}
+                        onClick={() => {
+                          const newCode = code + (code.endsWith("\n") ? "" : "\n") + snip.code + "\n";
+                          pushToHistory(code);
+                          setCode(newCode);
+                          lastSavedCode.current = newCode;
+                          setShowSnippets(false);
+                        }}
+                        style={{
+                          padding: "8px 10px", fontSize: "12px", cursor: "pointer",
+                          borderRadius: "4px", color: "var(--text-primary)", fontWeight: 500
+                        }}
+                        onMouseOver={(e) => e.currentTarget.style.background = "var(--bg-secondary)"}
+                        onMouseOut={(e) => e.currentTarget.style.background = "transparent"}
+                      >
+                        {snip.name}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
               <button
                 onClick={() => setShowHelp(!showHelp)}
                 style={{
@@ -678,6 +751,14 @@ export const ScriptEditorModal = ({ onClose }: { onClose: () => void }) => {
                   <h4 style={{ margin: "0 0 8px 0", fontSize: "12px", color: "var(--accent)" }}>Notifications</h4>
                   <div style={{ fontSize: "11px", fontFamily: "monospace", background: "var(--bg-primary)", padding: "6px", borderRadius: "4px" }}>
                     await bridge.notify.send("Title", "Body")
+                  </div>
+                </section>
+
+                <section>
+                  <h4 style={{ margin: "0 0 8px 0", fontSize: "12px", color: "var(--accent)" }}>Network (Webhooks)</h4>
+                  <div style={{ fontSize: "11px", color: "var(--text-secondary)" }}>Send JSON Webhook:</div>
+                  <div style={{ fontSize: "11px", fontFamily: "monospace", background: "var(--bg-primary)", padding: "6px", borderRadius: "4px" }}>
+                    await bridge.network.webhook(url, payload)
                   </div>
                 </section>
 

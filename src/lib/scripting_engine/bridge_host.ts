@@ -88,6 +88,21 @@ async function dispatch(
       // Stub — mobile push not yet connected
       return null;
 
+    // ── Network ──────────────────────────────────────────────
+    case "network.webhook": {
+      const [url, payload] = args as [string, unknown];
+      try {
+        const res = await fetch(url, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        });
+        return { ok: res.ok, status: res.status, text: await res.text() };
+      } catch (err) {
+        throw new Error(`Webhook failed: ${err}`);
+      }
+    }
+
     default:
       throw new Error(`Unknown bridge method: ${method}`);
   }
