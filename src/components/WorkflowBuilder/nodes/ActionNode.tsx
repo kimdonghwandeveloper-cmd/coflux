@@ -1,15 +1,33 @@
 import { Handle, Position } from '@xyflow/react';
-import { Play } from 'lucide-react';
+import { Play, Terminal } from 'lucide-react';
 
 export const ActionNode = ({ data, isConnectable }: any) => {
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === 'Tab') {
+      e.preventDefault();
+      const target = e.target as HTMLTextAreaElement;
+      const start = target.selectionStart;
+      const end = target.selectionEnd;
+      const val = target.value;
+      const newValue = val.substring(0, start) + '  ' + val.substring(end);
+      data.onChange({ ...data, params: { code: newValue } });
+      
+      // Reset cursor position after React update
+      setTimeout(() => {
+        target.selectionStart = target.selectionEnd = start + 2;
+      }, 0);
+    }
+  };
+
   return (
     <div style={{
       background: 'var(--bg-primary)',
       border: '2px solid #38a169',
       borderRadius: '12px',
       padding: '16px',
-      width: '280px',
-      boxShadow: '0 8px 24px rgba(0,0,0,0.12)',
+      width: data.type === 'run_script' ? '460px' : '280px',
+      boxShadow: '0 8px 32px rgba(0,0,0,0.15)',
+      transition: 'width 0.2s cubic-bezier(0.2, 0.8, 0.2, 1)',
     }}>
       <Handle
         type="target"
@@ -90,14 +108,24 @@ export const ActionNode = ({ data, isConnectable }: any) => {
         )}
 
         {data.type === 'run_script' && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-            <label style={{ fontSize: '11px', color: 'var(--accent)', fontWeight: 600 }}>Secure Script Sandbox</label>
+          <div style={{ display: 'flex', flexDirection: 'column', marginTop: '4px', borderRadius: '8px', overflow: 'hidden', border: '1px solid #333', boxShadow: 'inset 0 2px 8px rgba(0,0,0,0.2)' }}>
+            <div style={{ background: '#252526', padding: '8px 12px', display: 'flex', alignItems: 'center', gap: '6px', borderBottom: '1px solid #1e1e1e' }}>
+              <Terminal size={14} color="#4fc1ff" />
+              <span style={{ fontSize: '12px', color: '#cccccc', fontFamily: '"Fira Code", Consolas, monospace', fontWeight: 500, letterSpacing: '0.5px' }}>script.js</span>
+            </div>
             <textarea 
-              style={{ width: '100%', padding: '12px', borderRadius: '6px', border: '1px solid var(--border-color)', background: '#1e1e1e', color: '#d4d4d4', outline: 'none', resize: 'vertical', minHeight: '120px', fontFamily: 'monospace', fontSize: '13px', lineHeight: 1.5 }}
-              placeholder="// Write Javascript here"
+              style={{ 
+                width: '100%', padding: '16px', background: '#1e1e1e', color: '#d4d4d4', 
+                outline: 'none', border: 'none', resize: 'vertical', minHeight: '220px', 
+                fontFamily: '"Fira Code", Consolas, monospace', fontSize: '13.5px', lineHeight: 1.6, tabSize: 2 
+              }}
+              placeholder="// Write Javascript here...
+// e.g. const text = context.payload.content;
+//      bridge.log.info(text);"
               spellCheck={false}
               value={data.params?.code || ''}
               onChange={(e) => data.onChange({ ...data, params: { code: e.target.value } })}
+              onKeyDown={handleKeyDown}
               className="nodrag"
             />
           </div>
