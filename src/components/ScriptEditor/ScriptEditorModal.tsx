@@ -123,7 +123,7 @@ export const ScriptEditorModal = ({ onClose }: { onClose: () => void }) => {
     setLogs([]);
   };
 
-  const handleNew = () => {
+  const handleNew = async () => {
     const now = new Date().toISOString();
     const id = crypto.randomUUID();
     const newScript: ScriptData = {
@@ -133,6 +133,7 @@ export const ScriptEditorModal = ({ onClose }: { onClose: () => void }) => {
       createdAt: now,
       updatedAt: now,
     };
+    await scriptingEngine.saveScript(newScript);
     setScripts((prev) => [newScript, ...prev]);
     setActiveId(id);
     setName(newScript.name);
@@ -189,6 +190,9 @@ export const ScriptEditorModal = ({ onClose }: { onClose: () => void }) => {
       createdAt: now,
       updatedAt: now,
     };
+
+    // Save before running
+    await scriptingEngine.saveScript(script);
 
     const out = await scriptingEngine.run(script, (entry) => {
       setLogs((prev) => [...prev, entry]);
@@ -281,6 +285,15 @@ export const ScriptEditorModal = ({ onClose }: { onClose: () => void }) => {
 
   const activeScript = scripts.find((s) => s.id === activeId);
   const isDirty = activeScript ? activeScript.code !== code || activeScript.name !== name : true;
+
+  // Auto-save when dirty
+  useEffect(() => {
+    if (!isDirty || !activeId) return;
+    const timer = setTimeout(() => {
+      handleSave();
+    }, 1000);
+    return () => clearTimeout(timer);
+  }, [code, name, isDirty, activeId]);
 
   return (
     <div
