@@ -14,6 +14,13 @@ import { listen } from '@tauri-apps/api/event';
 
 const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8', '#82ca9d'];
 
+const DEFAULT_DATA = [
+  { name: 'Example 1', value: 45 },
+  { name: 'Example 2', value: 32 },
+  { name: 'Example 3', value: 58 },
+  { name: 'Example 4', value: 24 },
+];
+
 export const ChartBlock: React.FC<{ scopeId: string }> = ({ scopeId }) => {
   const containerRef = React.useRef<HTMLDivElement>(null);
   const { 
@@ -33,7 +40,7 @@ export const ChartBlock: React.FC<{ scopeId: string }> = ({ scopeId }) => {
   };
 
   const csvAnalysis = csvAnalysisByScope[scopeId];
-  const [isSettingsOpen, setIsSettingsOpen] = useState(!chartsByScope[scopeId]);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
 
@@ -43,17 +50,25 @@ export const ChartBlock: React.FC<{ scopeId: string }> = ({ scopeId }) => {
 
     let unlisten: any;
     const setupListener = async () => {
+      console.log("[Chart] Setting up drag-drop listener for", scopeId);
       unlisten = await listen('tauri://drag-drop', async (event: any) => {
         const { paths, position } = event.payload;
         if (paths.length > 0 && paths[0].endsWith('.csv')) {
-          if (containerRef.current) {
-            const rect = containerRef.current.getBoundingClientRect();
-            const { x, y } = position;
-            if (x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom) {
-              await handleAnalyzeCsv(paths[0]);
-            }
+          const { x, y } = position;
+          // Use document.elementFromPoint for more robust hit testing
+          const element = document.elementFromPoint(x, y);
+          if (containerRef.current && (containerRef.current === element || containerRef.current.contains(element))) {
+            console.log("[Chart] Hit SUCCESS! Analyzing:", paths[0]);
+            await handleAnalyzeCsv(paths[0]);
           }
         }
+      });
+      
+      // Also listen for drag-over to show visual feedback
+      await listen('tauri://drag-over', (event: any) => {
+        const { position } = event.payload;
+        const element = document.elementFromPoint(position.x, position.y);
+        setIsDragging(containerRef.current?.contains(element) || false);
       });
     };
     setupListener();
@@ -83,14 +98,18 @@ export const ChartBlock: React.FC<{ scopeId: string }> = ({ scopeId }) => {
     
     // Database source
     const tasks = tasksByScope[config.sourceScopeId] || [];
-    // Simple count by status for now
+    if (tasks.length === 0 && config.dataSourceType === 'database' && !config.sourceScopeId) {
+      return DEFAULT_DATA;
+    }
+
     const counts: Record<string, number> = {};
     tasks.forEach(t => {
       const status = t.customFields?.f_status || 'Unknown';
       counts[status] = (counts[status] || 0) + 1;
     });
     
-    return Object.entries(counts).map(([name, value]) => ({ name, value }));
+    const dbData = Object.entries(counts).map(([name, value]) => ({ name, value }));
+    return dbData.length > 0 ? dbData : DEFAULT_DATA;
   };
 
   const data = prepareData();
@@ -112,26 +131,25 @@ export const ChartBlock: React.FC<{ scopeId: string }> = ({ scopeId }) => {
     }
 
     return (
-      <div className="h-64 mt-4">
-        <ResponsiveContainer width="100%" height="100%">
+      <div className="h-[300px] w-full mt-4 flex items-center justify-center">
+        <ResponsiveContainer width="99%" height="100%">
           {config.type === 'bar' ? (
-            <BarChart data={data}>
+            <BarChart data={data} margin={{ top: 20, right: 30, left: 0, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgba(0,0,0,0.05)" />
               <XAxis dataKey="name" axisLine={false} tickLine={false} fontSize={10} tick={{ fill: '#888' }} />
               <YAxis axisLine={false} tickLine={false} fontSize={10} tick={{ fill: '#888' }} />
               <Tooltip 
                 contentStyle={{ 
-                  backgroundColor: 'rgba(255,255,255,0.9)', 
-                  backdropFilter: 'blur(10px)',
-                  border: 'none',
-                  borderRadius: '12px',
-                  boxShadow: '0 10px 30px rgba(0,0,0,0.1)'
+                  backgroundColor: 'white', 
+                  border: '1px solid #eee',
+                  borderRadius: '8px',
+                  fontSize: '10px'
                 }}
               />
               <Bar dataKey="value" fill="#000" radius={[4, 4, 0, 0]} />
             </BarChart>
           ) : config.type === 'line' ? (
-            <LineChart data={data}>
+            <LineChart data={data} margin={{ top: 20, right: 30, left: 0, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgba(0,0,0,0.05)" />
               <XAxis dataKey="name" axisLine={false} tickLine={false} fontSize={10} tick={{ fill: '#888' }} />
               <YAxis axisLine={false} tickLine={false} fontSize={10} tick={{ fill: '#888' }} />

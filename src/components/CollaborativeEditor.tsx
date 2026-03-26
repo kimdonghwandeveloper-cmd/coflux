@@ -246,11 +246,17 @@ const CollaborativeEditor = ({ provider, currentTheme, workspaceTheme, onAddSubP
     };
 
     const onMouseDown = (e: MouseEvent) => {
-      if ((e.target as HTMLElement).closest('.bn-side-menu')) return;
+      const target = e.target as HTMLElement;
+      if (target.closest('.bn-side-menu')) return;
       
+      // Ignore interactive elements within custom blocks to prevent accidental selection/drag
+      if (target.closest('button, input, select, textarea, canvas, .recharts-surface, .react-flow__node, .react-flow__edge')) {
+        return;
+      }
+
       // If clicking outside the AI toolbar, clear current selection to allow fresh start
-      if (!(e.target as HTMLElement).closest('.ai-action-toolbar')) {
-        setSelectedIds(new Set());
+      if (!target.closest('.ai-action-toolbar')) {
+        setSelectedIds(prev => prev.size === 0 ? prev : new Set());
       }
 
       rawStart = { x: e.clientX, y: e.clientY };
@@ -771,7 +777,7 @@ const CollaborativeEditor = ({ provider, currentTheme, workspaceTheme, onAddSubP
       title: "Page",
       onItemClick: () => { onAddSubPage(); },
       aliases: ["page", "subpage", "sub-page"],
-      group: "Basic blocks",
+      group: "Pages",
       icon: <RiFileLine size={18} />,
       subtext: "Embed a sub-page inside this page",
       key: "page",
