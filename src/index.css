@@ -1,0 +1,45 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg-primary: #ffffff;
+  --bg-secondary: #f9f9f9;
+  --text-primary: #000000;
+  --text-secondary: #737373;
+  --border-color: #e5e5e5;
+  --accent: #000000;
+}
+
+[data-theme='dark'] {
+  --bg-primary: #000000;
+  --bg-secondary: #171717;
+  --text-primary: #ffffff;
+  --text-secondary: #a3a3a3;
+  --border-color: #262626;
+  --accent: #ffffff;
+}
+
+@layer base {
+  body {
+    @apply bg-white text-black;
+    font-family: 'Inter', system-ui, sans-serif;
+  }
+}
+
+/* Custom Monochrome Utilities */
+.border-monochrome {
+  @apply border border-gray-200 dark:border-gray-800;
+}
+
+.bg-monochrome-surface {
+  @apply bg-white dark:bg-black;
+}
+
+.text-monochrome-primary {
+  @apply text-black dark:text-white;
+}
+
+.text-monochrome-secondary {
+  @apply text-gray-500 dark:text-gray-400;
+}

@@ -1,6 +1,7 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
-import App from "./App";
+import App from "./CofluxApp";
+import "./index.css";
 import { workflowEngine } from "./lib/workflow_engine/engine";
 import { seedPresets } from "./lib/workflow_engine/seeder";
 
