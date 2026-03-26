@@ -8,9 +8,27 @@ interface ScopedCanvas {
   edges: Edge[];
 }
 
+export interface ChartConfig {
+  type: 'pie' | 'bar' | 'line';
+  sourceScopeId: string;
+  dataSourceType: 'database' | 'csv';
+  title: string;
+  xAxisKey?: string;
+  yAxisKey?: string;
+}
+
+export interface CsvAnalysis {
+  columns: string[];
+  rowCount: number;
+  sampleData: any[];
+  columnTypes: Record<string, string>;
+}
+
 interface CofluxState {
   tasksByScope: Record<string, Task[]>;
   canvasByScope: Record<string, ScopedCanvas>;
+  chartsByScope: Record<string, ChartConfig>;
+  csvAnalysisByScope: Record<string, CsvAnalysis>;
   fieldDefinitions: CustomFieldDefinition[];
   widgets: DashboardWidget[];
 
@@ -37,11 +55,15 @@ interface CofluxState {
   convertNodeToTask: (scopeId: string, nodeId: string) => void;
 
   // Persistence
-  loadScopeData: (scopeId: string, dataType: 'tasks' | 'canvas') => Promise<void>;
+  loadScopeData: (scopeId: string, dataType: 'tasks' | 'canvas' | 'chart' | 'csv') => Promise<void>;
+
+  // Chart Actions
+  setChartConfig: (scopeId: string, config: ChartConfig) => void;
+  setCsvAnalysis: (scopeId: string, analysis: CsvAnalysis) => void;
 }
 
 // Internal helper to save to SQLite
-const saveToDb = async (scopeId: string, dataType: 'tasks' | 'canvas', data: any) => {
+const saveToDb = async (scopeId: string, dataType: 'tasks' | 'canvas' | 'chart' | 'csv', data: any) => {
   try {
     await invoke('coflux_save_scoped_data', {
       scopeId,
@@ -56,6 +78,8 @@ const saveToDb = async (scopeId: string, dataType: 'tasks' | 'canvas', data: any
 export const useStore = create<CofluxState>((set, get) => ({
   tasksByScope: {},
   canvasByScope: {},
+  chartsByScope: {},
+  csvAnalysisByScope: {},
   fieldDefinitions: [
     { id: 'f_status', name: 'Status', type: 'status', options: ['To Do', 'In Progress', 'Done'] },
     { id: 'f_priority', name: 'Priority', type: 'select', options: ['Low', 'Medium', 'High'] },
@@ -72,13 +96,33 @@ export const useStore = create<CofluxState>((set, get) => ({
         const data = JSON.parse(json);
         if (dataType === 'tasks') {
           set((state) => ({ tasksByScope: { ...state.tasksByScope, [scopeId]: data } }));
-        } else {
+        } else if (dataType === 'canvas') {
           set((state) => ({ canvasByScope: { ...state.canvasByScope, [scopeId]: data } }));
+        } else if (dataType === 'chart') {
+          set((state) => ({ chartsByScope: { ...state.chartsByScope, [scopeId]: data } }));
+        } else if (dataType === 'csv') {
+          set((state) => ({ csvAnalysisByScope: { ...state.csvAnalysisByScope, [scopeId]: data } }));
         }
       }
     } catch (err) {
       console.error(`Failed to load ${dataType} for scope ${scopeId}:`, err);
     }
+  },
+
+  setChartConfig: (scopeId, config) => {
+    set((state) => {
+      const newCharts = { ...state.chartsByScope, [scopeId]: config };
+      saveToDb(scopeId, 'chart', config);
+      return { chartsByScope: newCharts };
+    });
+  },
+
+  setCsvAnalysis: (scopeId, analysis) => {
+    set((state) => {
+      const newAnalysis = { ...state.csvAnalysisByScope, [scopeId]: analysis };
+      saveToDb(scopeId, 'csv', analysis);
+      return { csvAnalysisByScope: newAnalysis };
+    });
   },
 
   addTask: (scopeId, task) => {

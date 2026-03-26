@@ -10,6 +10,7 @@ mod script_storage;
 mod security;
 mod theme_store;
 mod user;
+mod data_analysis;
 mod web_search;
 mod webrtc_core;
 mod workflows;
@@ -149,6 +150,7 @@ pub fn run() {
             user::coflux_open_billing_portal,
             db_core::coflux_save_scoped_data,
             db_core::coflux_get_scoped_data,
+            data_analysis::coflux_analyze_csv,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

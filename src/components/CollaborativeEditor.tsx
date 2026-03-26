@@ -13,8 +13,8 @@ import { routeAiTask } from '../lib/ai_router';
 import * as Y from 'yjs';
 import { invoke } from '@tauri-apps/api/core';
 import { BlockNoteSchema, defaultBlockSpecs } from "@blocknote/core";
-import { DatabaseBlock, WhiteboardBlock } from "./Monochrome/EditorBlocks";
-import { RiDatabase2Line, RiArtboardLine, RiFileLine } from 'react-icons/ri';
+import { DatabaseBlock, WhiteboardBlock, ChartBlock } from "./Monochrome/EditorBlocks";
+import { RiDatabase2Line, RiArtboardLine, RiFileLine, RiBarChart2Line } from 'react-icons/ri';
 
 // Create a custom schema that includes our Database and Whiteboard blocks
 const schema = BlockNoteSchema.create({
@@ -22,6 +22,7 @@ const schema = BlockNoteSchema.create({
     ...defaultBlockSpecs,
     database: DatabaseBlock(),
     whiteboard: WhiteboardBlock(),
+    chart: ChartBlock(),
   },
 });
 
@@ -750,6 +751,19 @@ const CollaborativeEditor = ({ provider, currentTheme, workspaceTheme, onAddSubP
         group: "Apps",
         icon: <RiArtboardLine size={18} />,
         subtext: "Insert an infinite whiteboard canvas",
+      },
+      {
+        title: "Chart",
+        onItemClick: () => {
+          ed.updateBlock(ed.getTextCursorPosition().block, {
+            type: "chart",
+            props: { scopeId: `ch_${Date.now()}` },
+          });
+        },
+        aliases: ["chart", "graph", "analysis", "report"],
+        group: "Apps",
+        icon: <RiBarChart2Line size={18} />,
+        subtext: "Insert a customizable data chart",
       },
     ];
 
