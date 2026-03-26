@@ -2,30 +2,38 @@ import { create } from 'zustand';
 import { Task, CustomFieldDefinition, DashboardWidget } from '../lib/types/core';
 import { Node, Edge, applyNodeChanges, applyEdgeChanges, NodeChange, EdgeChange, OnNodesChange, OnEdgesChange, OnConnect, Connection, addEdge } from '@xyflow/react';
 
-interface CofluxState {
-  tasks: Task[];
-  fieldDefinitions: CustomFieldDefinition[];
+interface ScopedCanvas {
   nodes: Node[];
   edges: Edge[];
+}
+
+interface CofluxState {
+  tasksByScope: Record<string, Task[]>;
+  canvasByScope: Record<string, ScopedCanvas>;
+  fieldDefinitions: CustomFieldDefinition[];
   widgets: DashboardWidget[];
 
+  // Helpers
+  getTasks: (scopeId: string) => Task[];
+  getCanvas: (scopeId: string) => ScopedCanvas;
+
   // Actions for Tasks
-  addTask: (task: Task) => void;
-  updateTask: (id: string, updates: Partial<Task>) => void;
-  deleteTask: (id: string) => void;
+  addTask: (scopeId: string, task: Task) => void;
+  updateTask: (scopeId: string, id: string, updates: Partial<Task>) => void;
+  deleteTask: (scopeId: string, id: string) => void;
 
   // Actions for Fields
   addFieldDefinition: (field: CustomFieldDefinition) => void;
 
   // Actions for Canvas (React Flow)
-  onNodesChange: OnNodesChange;
-  onEdgesChange: OnEdgesChange;
-  onConnect: OnConnect;
-  setNodes: (nodes: Node[]) => void;
-  setEdges: (edges: Edge[]) => void;
-  addNode: (node: Node) => void;
-  updateNodeData: (nodeId: string, data: any) => void;
-  convertNodeToTask: (nodeId: string) => void;
+  onNodesChange: (scopeId: string, changes: NodeChange[]) => void;
+  onEdgesChange: (scopeId: string, changes: EdgeChange[]) => void;
+  onConnect: (scopeId: string, connection: Connection) => void;
+  setNodes: (scopeId: string, nodes: Node[]) => void;
+  setEdges: (scopeId: string, edges: Edge[]) => void;
+  addNode: (scopeId: string, node: Node) => void;
+  updateNodeData: (scopeId: string, nodeId: string, data: any) => void;
+  convertNodeToTask: (scopeId: string, nodeId: string) => void;
 
   // Actions for Dashboard
   addWidget: (widget: DashboardWidget) => void;
@@ -33,60 +41,124 @@ interface CofluxState {
 }
 
 export const useStore = create<CofluxState>((set, get) => ({
-  tasks: [],
+  tasksByScope: {},
+  canvasByScope: {},
   fieldDefinitions: [
     { id: 'f_status', name: 'Status', type: 'status', options: ['To Do', 'In Progress', 'Done'] },
     { id: 'f_priority', name: 'Priority', type: 'select', options: ['Low', 'Medium', 'High'] },
   ],
-  nodes: [],
-  edges: [],
   widgets: [],
 
-  addTask: (task) => set((state) => ({ tasks: [...state.tasks, task] })),
-  updateTask: (id, updates) => set((state) => ({
-    tasks: state.tasks.map((t) => (t.id === id ? { ...t, ...updates } : t)),
+  getTasks: (scopeId) => get().tasksByScope[scopeId] || [],
+  getCanvas: (scopeId) => get().canvasByScope[scopeId] || { nodes: [], edges: [] },
+
+  addTask: (scopeId, task) => set((state) => ({
+    tasksByScope: {
+      ...state.tasksByScope,
+      [scopeId]: [...(state.tasksByScope[scopeId] || []), task]
+    }
   })),
-  deleteTask: (id) => set((state) => ({
-    tasks: state.tasks.filter((t) => t.id !== id),
+
+  updateTask: (scopeId, id, updates) => set((state) => ({
+    tasksByScope: {
+      ...state.tasksByScope,
+      [scopeId]: (state.tasksByScope[scopeId] || []).map((t) => (t.id === id ? { ...t, ...updates } : t))
+    }
+  })),
+
+  deleteTask: (scopeId, id) => set((state) => ({
+    tasksByScope: {
+      ...state.tasksByScope,
+      [scopeId]: (state.tasksByScope[scopeId] || []).filter((t) => t.id !== id)
+    }
   })),
 
   addFieldDefinition: (field) => set((state) => ({
     fieldDefinitions: [...state.fieldDefinitions, field],
   })),
 
-  onNodesChange: (changes: NodeChange[]) => {
-    set({
-      nodes: applyNodeChanges(changes, get().nodes),
-    });
+  onNodesChange: (scopeId, changes) => {
+    const canvas = get().getCanvas(scopeId);
+    set((state) => ({
+      canvasByScope: {
+        ...state.canvasByScope,
+        [scopeId]: {
+          ...canvas,
+          nodes: applyNodeChanges(changes, canvas.nodes)
+        }
+      }
+    }));
   },
-  onEdgesChange: (changes: EdgeChange[]) => {
-    set({
-      edges: applyEdgeChanges(changes, get().edges),
-    });
+
+  onEdgesChange: (scopeId, changes) => {
+    const canvas = get().getCanvas(scopeId);
+    set((state) => ({
+      canvasByScope: {
+        ...state.canvasByScope,
+        [scopeId]: {
+          ...canvas,
+          edges: applyEdgeChanges(changes, canvas.edges)
+        }
+      }
+    }));
   },
-  onConnect: (connection: Connection) => {
-    set({
-      edges: addEdge(connection, get().edges),
-    });
+
+  onConnect: (scopeId, connection) => {
+    const canvas = get().getCanvas(scopeId);
+    set((state) => ({
+      canvasByScope: {
+        ...state.canvasByScope,
+        [scopeId]: {
+          ...canvas,
+          edges: addEdge(connection, canvas.edges)
+        }
+      }
+    }));
   },
-  setNodes: (nodes) => set({ nodes }),
-  setEdges: (edges) => set({ edges }),
-  addNode: (node) => set((state) => ({ nodes: [...state.nodes, node] })),
-  updateNodeData: (nodeId, data) => set((state) => {
-    const nodes = state.nodes.map((n) => (n.id === nodeId ? { ...n, data: { ...n.data, ...data } } : n));
+
+  setNodes: (scopeId, nodes) => set((state) => ({
+    canvasByScope: {
+      ...state.canvasByScope,
+      [scopeId]: { ...(state.canvasByScope[scopeId] || { edges: [] }), nodes }
+    }
+  })),
+
+  setEdges: (scopeId, edges) => set((state) => ({
+    canvasByScope: {
+      ...state.canvasByScope,
+      [scopeId]: { ...(state.canvasByScope[scopeId] || { nodes: [] }), edges }
+    }
+  })),
+
+  addNode: (scopeId, node) => set((state) => {
+    const canvas = get().getCanvas(scopeId);
+    return {
+      canvasByScope: {
+        ...state.canvasByScope,
+        [scopeId]: { ...canvas, nodes: [...canvas.nodes, node] }
+      }
+    };
+  }),
+
+  updateNodeData: (scopeId, nodeId, data) => set((state) => {
+    const canvas = get().getCanvas(scopeId);
+    const nodes = canvas.nodes.map((n) => (n.id === nodeId ? { ...n, data: { ...n.data, ...data } } : n));
     const node = nodes.find((n) => n.id === nodeId);
     
-    // If node is linked to a task, update the task title too
-    let tasks = state.tasks;
+    let tasks = state.tasksByScope[scopeId] || [];
     if (node?.data.taskId && data.label) {
       tasks = tasks.map((t) => (t.id === node.data.taskId ? { ...t, title: data.label } : t));
     }
     
-    return { nodes, tasks };
+    return {
+      canvasByScope: { ...state.canvasByScope, [scopeId]: { ...canvas, nodes } },
+      tasksByScope: { ...state.tasksByScope, [scopeId]: tasks }
+    };
   }),
-  convertNodeToTask: (nodeId) => {
-    const { nodes, addTask } = get();
-    const node = nodes.find((n) => n.id === nodeId);
+
+  convertNodeToTask: (scopeId, nodeId) => {
+    const canvas = get().getCanvas(scopeId);
+    const node = canvas.nodes.find((n) => n.id === nodeId);
     if (!node || node.data.taskId) return;
 
     const newTask: Task = {
@@ -95,20 +167,24 @@ export const useStore = create<CofluxState>((set, get) => ({
       description: '',
       createdAt: Date.now(),
       updatedAt: Date.now(),
-      customFields: {
-        f_status: 'To Do'
-      },
+      customFields: { f_status: 'To Do' },
     };
 
-    addTask(newTask);
+    get().addTask(scopeId, newTask);
 
-    set({
-      nodes: nodes.map((n) => 
-        n.id === nodeId 
-          ? { ...n, data: { ...n.data, taskId: newTask.id, isTask: true } } 
-          : n
-      ),
-    });
+    set((state) => ({
+      canvasByScope: {
+        ...state.canvasByScope,
+        [scopeId]: {
+          ...canvas,
+          nodes: canvas.nodes.map((n) => 
+            n.id === nodeId 
+              ? { ...n, data: { ...n.data, taskId: newTask.id, isTask: true } } 
+              : n
+          )
+        }
+      }
+    }));
   },
 
   addWidget: (widget) => set((state) => ({ widgets: [...state.widgets, widget] })),
