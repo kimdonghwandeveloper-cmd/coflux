@@ -12,6 +12,8 @@ import { invoke } from '@tauri-apps/api/core';
 import { onOpenUrl } from '@tauri-apps/plugin-deep-link';
 import { applyTheme, resolveTheme, WorkspaceTheme, PRESET_THEMES, getContrastColor } from './lib/theme';
 import { supabase, UserProfile } from './lib/supabase';
+import { Database as MonochromeDatabase } from './components/Monochrome/Database';
+import { Dashboard as MonochromeDashboard } from './components/Monochrome/Dashboard';
 import './lib/i18n'; // E28: i18n 초기화
 import logo from './assets/logo.png';
 import { useTranslation } from 'react-i18next'; // E28: useTranslation 훅 추가
@@ -68,6 +70,9 @@ function App() {
   const [isHeatmap, setIsHeatmap] = useState(false);
   const [isSemantic, setIsSemantic] = useState(false);
   const [activityScores, setActivityScores] = useState<PageActivity[]>([]);
+
+  // New: Core Feature View State
+  const [currentView, setCurrentView] = useState<'editor' | 'whiteboard' | 'database' | 'dashboard'>('editor');
 
   useEffect(() => {
     if (isHeatmap) {
@@ -323,7 +328,9 @@ function App() {
           pages={workspacePages}
           trashedPages={trashedPages}
           activePageId={activePageId || ''}
-          setActivePageId={setActivePageId}
+          setActivePageId={(id) => { setActivePageId(id); setCurrentView('editor'); }}
+          currentView={currentView}
+          setCurrentView={setCurrentView}
           workspaces={workspaces}
           activeWorkspaceId={activeWorkspaceId || ''}
           onSwitchWorkspace={handleSwitchWorkspace}
@@ -485,7 +492,7 @@ function App() {
           </div>
         )}
 
-        {activePageId && pages.length > 0 && (
+        {currentView === 'editor' && activePageId && pages.length > 0 && (
           <Canvas
             currentTheme={theme}
             workspaceTheme={activeTheme}
@@ -507,10 +514,18 @@ function App() {
                 setActivePageId(newId);
               } catch (e) { console.error(e); }
             }}
-            onNavigateToPage={(id: string) => setActivePageId(id)}
+            onNavigateToPage={(id: string) => { setActivePageId(id); setCurrentView('editor'); }}
             onUserCountChange={setMemberCount}
             memberCount={memberCount}
           />
+        )}
+
+        {currentView === 'database' && <MonochromeDatabase />}
+        {currentView === 'dashboard' && <MonochromeDashboard />}
+        {currentView === 'whiteboard' && (
+          <div className="flex-1 h-full flex items-center justify-center bg-gray-50/50 dark:bg-gray-950/50">
+            <h2 className="text-4xl font-bold opacity-20">Whiteboard View (Phase 3)</h2>
+          </div>
         )}
       </div>
 

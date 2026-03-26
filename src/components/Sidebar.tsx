@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { Plus, Settings, Moon, Sun, MoreHorizontal, Star, Trash2, ChevronDown, ChevronRight, RotateCcw, X, GripVertical, Sparkles } from 'lucide-react';
+import { Plus, Settings, Moon, Sun, MoreHorizontal, Star, Trash2, ChevronDown, ChevronRight, RotateCcw, X, GripVertical, Sparkles, LayoutGrid, Database, Palette } from 'lucide-react';
 import { PageData, WorkspaceData } from '../App';
 import { TOGGLE_THEME_IDS } from '../lib/theme';
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, DragEndEvent, DragStartEvent, DragOverlay } from '@dnd-kit/core';
@@ -23,7 +23,7 @@ const SortablePageItem = ({ page, depth, activePageId, setActivePageId, openMenu
 
   return (
     <div ref={setNodeRef} style={style}>
-      <div 
+      <div
         className={`sidebar-item ${activePageId === page.id ? 'active' : ''}`}
         onClick={() => setActivePageId(page.id)}
         style={{ position: 'relative', display: 'flex', justifyContent: 'space-between', paddingRight: '4px', paddingLeft: `${12 + depth * 16}px` }}
@@ -40,9 +40,9 @@ const SortablePageItem = ({ page, depth, activePageId, setActivePageId, openMenu
             <div style={{ width: '18px' }} />
           )}
           <span style={{ fontSize: '16px' }}>{page.icon}</span>
-          <span style={{ 
-            whiteSpace: 'nowrap', 
-            overflow: 'hidden', 
+          <span style={{
+            whiteSpace: 'nowrap',
+            overflow: 'hidden',
             textOverflow: 'ellipsis',
             color: isHeatmap && score > 0.5 ? 'var(--text-primary)' : 'inherit',
             fontWeight: isHeatmap && score > 0.7 ? 600 : 'inherit'
@@ -56,7 +56,7 @@ const SortablePageItem = ({ page, depth, activePageId, setActivePageId, openMenu
             }} />
           )}
         </div>
-        
+
         <div className="sidebar-item-actions"
           onClick={(e) => { e.stopPropagation(); setOpenMenuId(openMenuId === page.id ? null : page.id); }}
           style={{ padding: '2px', borderRadius: '4px', cursor: 'pointer', display: 'flex', flexShrink: 0 }}>
@@ -106,8 +106,10 @@ export const Sidebar = ({
   onOpenSettings,
   onReorderPages,
   isHeatmap,
-  activityScores
-}: { 
+  activityScores,
+  currentView,
+  setCurrentView
+}: {
   theme: string,
   toggleTheme: () => void,
   activeThemeId: string,
@@ -127,7 +129,9 @@ export const Sidebar = ({
   onOpenSettings: () => void,
   onReorderPages: (ids: string[]) => void,
   isHeatmap?: boolean,
-  activityScores?: PageActivity[]
+  activityScores?: PageActivity[],
+  currentView: 'editor' | 'whiteboard' | 'database' | 'dashboard',
+  setCurrentView: (v: 'editor' | 'whiteboard' | 'database' | 'dashboard') => void
 }) => {
   const { t } = useTranslation();
   const [showInsights, setShowInsights] = useState(true);
@@ -136,7 +140,7 @@ export const Sidebar = ({
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
   const [showWsDropdown, setShowWsDropdown] = useState(false);
   const [showTrash, setShowTrash] = useState(false);
-  
+
   const [sidebarWidth, setSidebarWidth] = useState(260);
   const [isResizing, setIsResizing] = useState(false);
 
@@ -145,10 +149,10 @@ export const Sidebar = ({
       try {
         const { invoke } = await import('@tauri-apps/api/core');
         const { getVersion } = await import('@tauri-apps/api/app');
-        
+
         const currentVersion = await getVersion();
         const dismissedVersion = await invoke<string>('coflux_get_setting', { key: 'dismissed_insights_version' });
-        
+
         if (dismissedVersion !== currentVersion) {
           setShowInsights(true);
         } else {
@@ -201,7 +205,7 @@ export const Sidebar = ({
     const handleMouseUp = () => {
       if (isResizing) setIsResizing(false);
     };
-    
+
     if (isResizing) {
       document.addEventListener('mousemove', handleMouseMove);
       document.addEventListener('mouseup', handleMouseUp);
@@ -224,7 +228,7 @@ export const Sidebar = ({
   const sortByOrder = (a: PageData, b: PageData) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0);
   const getChildren = (parentId: string) => pages.filter(p => p.parentId === parentId).sort(sortByOrder);
   const hasChildren = (parentId: string) => pages.some(p => p.parentId === parentId);
-  
+
   const favoriteRoots = pages.filter(p => p.isFavorite && !p.parentId).sort(sortByOrder);
   const privateRoots = pages.filter(p => !p.isFavorite && !p.parentId).sort(sortByOrder);
 
@@ -268,15 +272,15 @@ export const Sidebar = ({
   );
 
   return (
-    <div className="sidebar" style={{ 
-      paddingTop: '12px', 
-      width: `${sidebarWidth}px`, 
-      minWidth: `${sidebarWidth}px`, 
+    <div className="sidebar" style={{
+      paddingTop: '12px',
+      width: `${sidebarWidth}px`,
+      minWidth: `${sidebarWidth}px`,
       transition: isResizing ? 'none' : 'width 0.3s cubic-bezier(0.2, 0.8, 0.2, 1), background-color 0.3s',
-      position: 'relative' 
+      position: 'relative'
     }}>
       {/* Drag handle */}
-      <div 
+      <div
         onMouseDown={(e) => { e.preventDefault(); setIsResizing(true); }}
         style={{
           position: 'absolute',
@@ -332,12 +336,12 @@ export const Sidebar = ({
           </div>
         )}
       </div>
-      
+
       {/* AI Insights Card */}
       {showInsights && (
         <div style={{ padding: '0 16px 20px', animation: 'fadeIn 0.5s ease-out' }}>
-          <div style={{ 
-            background: 'linear-gradient(135deg, var(--bg-surface) 0%, var(--bg-secondary) 100%)', 
+          <div style={{
+            background: 'linear-gradient(135deg, var(--bg-surface) 0%, var(--bg-secondary) 100%)',
             borderRadius: '12px', border: '1px solid var(--border-color)', padding: '12px',
             boxShadow: '0 4px 12px rgba(0,0,0,0.05)',
             position: 'relative'
@@ -359,6 +363,26 @@ export const Sidebar = ({
           </div>
         </div>
       )}
+
+      {/* Apps Section */}
+      <div style={{ marginBottom: '24px' }}>
+        <div style={{ padding: '0 16px 8px', fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Apps</div>
+
+        <div className={`sidebar-item ${currentView === 'whiteboard' ? 'active' : ''}`} onClick={() => setCurrentView('whiteboard')}>
+          <LayoutGrid size={16} />
+          <span style={{ fontSize: '13px' }}>Whiteboard</span>
+        </div>
+
+        <div className={`sidebar-item ${currentView === 'database' ? 'active' : ''}`} onClick={() => setCurrentView('database')}>
+          <Database size={16} />
+          <span style={{ fontSize: '13px' }}>Database</span>
+        </div>
+
+        <div className={`sidebar-item ${currentView === 'dashboard' ? 'active' : ''}`} onClick={() => setCurrentView('dashboard')}>
+          <Palette size={16} />
+          <span style={{ fontSize: '13px' }}>Dashboard</span>
+        </div>
+      </div>
 
       <div style={{ flex: 1, overflowY: 'auto' }}>
         {favoriteRoots.length > 0 && (
@@ -411,7 +435,7 @@ export const Sidebar = ({
 
         {/* Trash Section */}
         <div style={{ marginTop: '16px' }}>
-          <div 
+          <div
             style={{ padding: '0 16px 8px', display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}
             onClick={() => setShowTrash(!showTrash)}>
             <Trash2 size={12} color="var(--text-secondary)" />
@@ -450,7 +474,7 @@ export const Sidebar = ({
         </div>
         {TOGGLE_THEME_IDS.includes(activeThemeId) && (
           <div className="sidebar-item" style={{ margin: 0, padding: '8px', justifyContent: 'center' }} onClick={toggleTheme} title="Toggle Theme">
-            {theme === 'light' ? <Moon size={16} color="var(--text-secondary)"/> : <Sun size={16} color="var(--text-secondary)"/>}
+            {theme === 'light' ? <Moon size={16} color="var(--text-secondary)" /> : <Sun size={16} color="var(--text-secondary)" />}
           </div>
         )}
       </div>

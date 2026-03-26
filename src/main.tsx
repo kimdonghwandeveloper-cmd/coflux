@@ -1,7 +1,7 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
-import App from "./CofluxApp";
-import "./index.css";
+import App from "./App";
+import "./index.css"; // Keep this to enable Tailwind for the new features I'll add
 import { workflowEngine } from "./lib/workflow_engine/engine";
 import { seedPresets } from "./lib/workflow_engine/seeder";
 
