@@ -9,12 +9,14 @@ interface ScopedCanvas {
 }
 
 export interface ChartConfig {
-  type: 'pie' | 'bar' | 'line';
+  type: 'pie' | 'bar' | 'line' | 'scatter' | 'histogram' | 'uninitialized';
   sourceScopeId: string;
-  dataSourceType: 'database' | 'csv';
+  dataSourceType: 'database' | 'csv' | 'manual';
   title: string;
+  subtitle?: string;
   xAxisKey?: string;
   yAxisKey?: string;
+  customData?: { name: string, value: number }[];
 }
 
 export interface CsvAnalysis {

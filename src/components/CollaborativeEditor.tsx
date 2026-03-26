@@ -7,7 +7,7 @@ import { filterSuggestionItems as filterItems } from "@blocknote/core/extensions
 import "@blocknote/mantine/style.css";
 import { PageData } from '../App';
 import { WorkspaceTheme } from '../lib/theme';
-import { Sparkles, Plus, Loader2 } from 'lucide-react';
+import { Sparkles, Plus, Loader2, TrendingUp, PieChart as PieIcon } from 'lucide-react';
 import { SMART_TEMPLATES, Template } from '../lib/templates';
 import { routeAiTask } from '../lib/ai_router';
 import * as Y from 'yjs';
@@ -759,17 +759,17 @@ const CollaborativeEditor = ({ provider, currentTheme, workspaceTheme, onAddSubP
         subtext: "Insert an infinite whiteboard canvas",
       },
       {
-        title: "Chart",
+        title: "Chart (Insight v2.1)",
         onItemClick: () => {
           ed.updateBlock(ed.getTextCursorPosition().block, {
             type: "chart",
-            props: { scopeId: `ch_${Date.now()}` },
+            props: { scopeId: `ch_${Date.now()}`, type: 'uninitialized' },
           });
         },
-        aliases: ["chart", "graph", "analysis", "report"],
+        aliases: ["chart", "graph", "bar", "line", "pie", "scatter", "histogram"],
         group: "Apps",
         icon: <RiBarChart2Line size={18} />,
-        subtext: "Insert a customizable data chart",
+        subtext: "Create interactive visualizations (Bar, Line, Pie, Scatter, etc.)",
       },
     ];
 
