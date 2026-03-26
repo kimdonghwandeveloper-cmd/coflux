@@ -10,6 +10,25 @@ pub struct UserProfile {
     pub created_at: Option<String>,
 }
 
+pub fn init_user_table(_app: tauri::AppHandle) -> Result<(), String> {
+    let guard = DB_CONN.lock().map_err(|e| e.to_string())?;
+    let conn = guard.as_ref().ok_or("DB 미초기화")?;
+
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS users (
+            id TEXT PRIMARY KEY,
+            email TEXT,
+            tier TEXT NOT NULL,
+            stripe_customer_id TEXT,
+            created_at TEXT
+        )",
+        [],
+    )
+    .map_err(|e| e.to_string())?;
+
+    Ok(())
+}
+
 #[tauri::command]
 pub fn coflux_get_user_profile() -> Result<Option<UserProfile>, String> {
     let guard = DB_CONN.lock().map_err(|e| e.to_string())?;

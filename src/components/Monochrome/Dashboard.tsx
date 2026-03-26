@@ -6,7 +6,8 @@ import { useStore } from '../../store/useStore';
 import { Activity, CheckCircle2, AlertCircle, Clock, Zap } from 'lucide-react';
 
 export const Dashboard = () => {
-  const { tasks } = useStore();
+  const { tasksByScope } = useStore();
+  const tasks = useMemo(() => Object.values(tasksByScope).flat(), [tasksByScope]);
 
   const statusData = useMemo(() => {
     const counts: Record<string, number> = { 'To Do': 0, 'In Progress': 0, 'Done': 0 };

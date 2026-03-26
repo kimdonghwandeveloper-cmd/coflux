@@ -1,4 +1,4 @@
-import { useCallback, useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { Handle, Position } from '@xyflow/react';
 import { useStore } from '../../store/useStore';
 import { Database as DbIcon, Link as LinkIcon } from 'lucide-react';

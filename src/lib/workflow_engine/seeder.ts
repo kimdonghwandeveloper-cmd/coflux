@@ -9,23 +9,34 @@ import type { WorkflowData } from "./types";
 export async function seedPresets(): Promise<void> {
   try {
     const existing = await invoke<WorkflowData[]>("get_workflows");
-    if (existing.length > 0) return;
+    
+    // Delete legacy presets with invalid IDs (not UUIDs)
+    for (const wf of existing) {
+      if (wf.id.startsWith("preset-")) {
+        await invoke("delete_workflow", { id: wf.id });
+      }
+    }
 
+    // Refresh existing list after potential deletions
+    const currentWorkflows = await invoke<WorkflowData[]>("get_workflows");
     const now = new Date().toISOString();
 
     for (const def of PRESETS) {
-      const wf: WorkflowData = {
-        id: def.id,
-        name: def.name,
-        enabled: def.enabled,
-        definition: JSON.stringify(def),
-        createdAt: now,
-        updatedAt: now,
-      };
-      await invoke("save_workflow", { workflow: wf });
+      // Check if this preset (by its new UUID) already exists
+      if (!currentWorkflows.find(w => w.id === def.id)) {
+        const wf: WorkflowData = {
+          id: def.id,
+          name: def.name,
+          enabled: def.enabled,
+          definition: JSON.stringify(def),
+          createdAt: now,
+          updatedAt: now,
+        };
+        await invoke("save_workflow", { workflow: wf });
+      }
     }
 
-    console.log(`[Seeder] Inserted ${PRESETS.length} preset workflows.`);
+    console.log(`[Seeder] Seeded/Verified ${PRESETS.length} preset workflows.`);
   } catch (err) {
     console.error("[Seeder] Failed to seed presets:", err);
   }

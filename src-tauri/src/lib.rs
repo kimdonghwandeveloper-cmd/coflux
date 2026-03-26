@@ -76,6 +76,9 @@ pub fn run() {
             if let Err(e) = theme_store::init_theme_table() {
                 eprintln!("Failed to init workspace_themes table: {}", e);
             }
+            if let Err(e) = user::init_user_table(app.handle().clone()) {
+                eprintln!("Failed to init users table: {}", e);
+            }
             if let Err(e) = embeddings::init_embeddings_table() {
                 eprintln!("Failed to init embeddings table: {}", e);
             }
