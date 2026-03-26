@@ -1,9 +1,16 @@
+import { useEffect } from 'react';
 import { useStore } from '../../store/useStore';
 import { Plus, Search, Filter, MoreHorizontal, Calendar, CheckCircle2 } from 'lucide-react';
 
 export const Database = ({ scopeId = 'global' }: { scopeId?: string }) => {
-  const { fieldDefinitions, addTask, updateTask, getTasks } = useStore();
+  const { fieldDefinitions, addTask, updateTask, getTasks, loadScopeData } = useStore();
   const tasks = getTasks(scopeId);
+
+  useEffect(() => {
+    if (scopeId) {
+      loadScopeData(scopeId, 'tasks');
+    }
+  }, [scopeId, loadScopeData]);
 
   const handleAddTask = () => {
     addTask(scopeId, {

@@ -3,6 +3,19 @@ import { Handle, Position } from '@xyflow/react';
 import { useStore } from '../../store/useStore';
 import { Database as DbIcon, Link as LinkIcon } from 'lucide-react';
 
+const getContrastColor = (hexColor: string | undefined, isDarkMode: boolean) => {
+  if (!hexColor) return isDarkMode ? '#ffffff' : '#000000';
+  
+  // If no hex color, just return based on theme
+  if (!hexColor.startsWith('#')) return isDarkMode ? '#ffffff' : '#000000';
+
+  const r = parseInt(hexColor.slice(1, 3), 16);
+  const g = parseInt(hexColor.slice(3, 5), 16);
+  const b = parseInt(hexColor.slice(5, 7), 16);
+  const yiq = (r * 299 + g * 587 + b * 114) / 1000;
+  return yiq >= 128 ? '#000000' : '#ffffff';
+};
+
 export const EditableNode = ({ id, data, selected }: any) => {
   const updateNodeData = useStore((state) => state.updateNodeData);
   const [label, setLabel] = useState(data.label);
@@ -25,13 +38,18 @@ export const EditableNode = ({ id, data, selected }: any) => {
   };
 
   return (
-    <div className={`
-      relative px-5 py-3 min-w-[160px] 
-      bg-white/80 dark:bg-black/80 backdrop-blur-xl
-      border-2 transition-all duration-300 ease-out
-      ${selected ? 'border-accent shadow-2xl scale-105 z-10' : 'border-border shadow-lg'}
-      ${data.isTask ? 'border-dashed' : ''}
-    `}>
+    <div 
+      className={`
+        relative px-5 py-3 min-w-[160px] 
+        ${!data.color ? 'bg-white/80 dark:bg-black/80' : ''}
+        backdrop-blur-xl border-2 transition-all duration-300 ease-out
+        ${selected ? 'border-accent shadow-2xl scale-105 z-10' : 'border-border shadow-lg'}
+        ${data.isTask ? 'border-dashed' : ''}
+      `}
+      style={{ 
+        backgroundColor: data.color || undefined,
+      }}
+    >
       <Handle type="target" position={Position.Top} className="!bg-accent !border-none !w-1.5 !h-1.5" />
       
       <div className="flex flex-col gap-1">
@@ -48,12 +66,14 @@ export const EditableNode = ({ id, data, selected }: any) => {
             onBlur={onBlur}
             onKeyDown={onKeyDown}
             autoFocus
-            className="w-full text-xs font-black outline-none bg-transparent text-primary"
+            style={{ color: getContrastColor(data.color, document.documentElement.classList.contains('dark')) }}
+            className="w-full text-xs font-black outline-none bg-transparent"
           />
         ) : (
           <div 
             onDoubleClick={() => setIsEditing(true)}
-            className={`text-xs font-black tracking-tight leading-tight ${data.isTask ? 'text-primary' : 'text-secondary'} cursor-text select-none`}
+            style={{ color: getContrastColor(data.color, document.documentElement.classList.contains('dark')) }}
+            className={`text-xs font-black tracking-tight leading-tight cursor-text select-none opacity-90`}
           >
             {label || 'New Concept'}
           </div>

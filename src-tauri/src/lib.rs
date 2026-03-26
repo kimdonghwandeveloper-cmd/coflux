@@ -147,6 +147,8 @@ pub fn run() {
             user::coflux_logout_local,
             user::coflux_create_checkout_session,
             user::coflux_open_billing_portal,
+            db_core::coflux_save_scoped_data,
+            db_core::coflux_get_scoped_data,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

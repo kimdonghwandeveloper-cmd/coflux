@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useState, useEffect } from 'react';
 import {
   ReactFlow,
   Panel,
@@ -23,8 +23,15 @@ export const Whiteboard = ({ scopeId = 'global' }: { scopeId?: string }) => {
     onConnect, 
     addNode, 
     convertNodeToTask,
-    getCanvas
+    getCanvas,
+    loadScopeData
   } = useStore();
+
+  useEffect(() => {
+    if (scopeId) {
+      loadScopeData(scopeId, 'canvas');
+    }
+  }, [scopeId, loadScopeData]);
 
   const { nodes, edges } = getCanvas(scopeId);
 

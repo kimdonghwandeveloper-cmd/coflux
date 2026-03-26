@@ -138,6 +138,18 @@ pub fn init_db(app_handle: &tauri::AppHandle) -> Result<()> {
     );
     let _ = conn.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('ollama_base_url', 'http://localhost:11434')", []);
 
+    // Create a table for scoped data (tasks, whiteboard, etc.)
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS scoped_data (
+            scope_id TEXT NOT NULL,
+            data_type TEXT NOT NULL,
+            data_json TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            PRIMARY KEY (scope_id, data_type)
+        )",
+        [],
+    )?;
+
     // Create a table for custom manual links created in Knowledge Map
     conn.execute(
         "CREATE TABLE IF NOT EXISTS manual_links (
@@ -500,6 +512,48 @@ pub fn coflux_set_setting(key: String, value: String) -> crate::error::AppResult
             params![key, value],
         )?;
         Ok(())
+    } else {
+        Err(crate::error::AppError::Internal(
+            "Database not initialized".into(),
+        ))
+    }
+}
+#[tauri::command]
+pub fn coflux_save_scoped_data(
+    scope_id: String,
+    data_type: String,
+    data_json: String,
+) -> crate::error::AppResult<()> {
+    if let Some(conn) = DB_CONN.lock().unwrap().as_ref() {
+        let now = chrono::Local::now().to_rfc3339();
+        conn.execute(
+            "INSERT OR REPLACE INTO scoped_data (scope_id, data_type, data_json, updated_at) VALUES (?1, ?2, ?3, ?4)",
+            params![scope_id, data_type, data_json, now],
+        )?;
+        Ok(())
+    } else {
+        Err(crate::error::AppError::Internal(
+            "Database not initialized".into(),
+        ))
+    }
+}
+
+#[tauri::command]
+pub fn coflux_get_scoped_data(
+    scope_id: String,
+    data_type: String,
+) -> crate::error::AppResult<Option<String>> {
+    if let Some(conn) = DB_CONN.lock().unwrap().as_ref() {
+        let mut stmt = conn.prepare(
+            "SELECT data_json FROM scoped_data WHERE scope_id = ?1 AND data_type = ?2",
+        )?;
+        let result = stmt.query_row(params![scope_id, data_type], |row| row.get(0));
+
+        match result {
+            Ok(json) => Ok(Some(json)),
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+            Err(e) => Err(e.into()),
+        }
     } else {
         Err(crate::error::AppError::Internal(
             "Database not initialized".into(),
