@@ -3,16 +3,27 @@ import { findRelatedPages, RelatedPage, updateBlockEmbedding, deleteBlockEmbeddi
 import { BlockNoteView } from "@blocknote/mantine";
 import { useCreateBlockNote, SuggestionMenuController, getDefaultReactSlashMenuItems } from "@blocknote/react";
 import { en } from "@blocknote/core/locales";
-import { filterSuggestionItems } from "@blocknote/core/extensions";
+import { filterSuggestionItems as filterItems } from "@blocknote/core/extensions";
 import "@blocknote/mantine/style.css";
 import { PageData } from '../App';
 import { WorkspaceTheme } from '../lib/theme';
 import { Sparkles, Plus, Loader2 } from 'lucide-react';
 import { SMART_TEMPLATES, Template } from '../lib/templates';
 import { routeAiTask } from '../lib/ai_router';
-import { invoke } from '@tauri-apps/api/core';
 import * as Y from 'yjs';
-import { RiFileLine } from 'react-icons/ri';
+import { invoke } from '@tauri-apps/api/core';
+import { BlockNoteSchema, defaultBlockSpecs } from "@blocknote/core";
+import { DatabaseBlock, WhiteboardBlock } from "./Monochrome/EditorBlocks";
+import { RiDatabase2Line, RiArtboardLine, RiFileLine } from 'react-icons/ri';
+
+// Create a custom schema that includes our Database and Whiteboard blocks
+const schema = BlockNoteSchema.create({
+  blockSpecs: {
+    ...defaultBlockSpecs,
+    database: DatabaseBlock(),
+    whiteboard: WhiteboardBlock(),
+  },
+});
 
 // CSS classes used across drag and selection interactions.
 // Keeping them as constants prevents typo-induced silent failures.
@@ -312,6 +323,7 @@ const CollaborativeEditor = ({ provider, currentTheme, workspaceTheme, onAddSubP
   }, [pageId]);
 
   const editor = useCreateBlockNote({
+    schema,
     dictionary: {
       ...en,
       color_picker: {
@@ -706,11 +718,40 @@ const CollaborativeEditor = ({ provider, currentTheme, workspaceTheme, onAddSubP
     };
   }, [provider]);
 
-  const getCustomSlashMenuItems = useCallback((ed: any) => {
+  const getCustomSlashMenuItems = useCallback((ed: typeof editor) => {
     // Filter out Heading 4, 5, 6 as they are redundant for this app
     const defaults = getDefaultReactSlashMenuItems(ed).filter(
       item => !["Heading 4", "Heading 5", "Heading 6"].includes(item.title)
     );
+
+    const appsItems = [
+      {
+        title: "Database",
+        onItemClick: () => {
+          ed.updateBlock(ed.getTextCursorPosition().block, {
+            type: "database",
+            props: { scopeId: `db_${Date.now()}` },
+          });
+        },
+        aliases: ["db", "table", "database"],
+        group: "Apps",
+        icon: <RiDatabase2Line size={18} />,
+        subtext: "Insert a monochrome database table",
+      },
+      {
+        title: "Whiteboard",
+        onItemClick: () => {
+          ed.updateBlock(ed.getTextCursorPosition().block, {
+            type: "whiteboard",
+            props: { scopeId: `wb_${Date.now()}` },
+          });
+        },
+        aliases: ["board", "canvas", "whiteboard"],
+        group: "Apps",
+        icon: <RiArtboardLine size={18} />,
+        subtext: "Insert an infinite whiteboard canvas",
+      },
+    ];
 
     const pageItem = {
       title: "Page",
@@ -721,7 +762,7 @@ const CollaborativeEditor = ({ provider, currentTheme, workspaceTheme, onAddSubP
       subtext: "Embed a sub-page inside this page",
       key: "page",
     };
-    return [...defaults, pageItem];
+    return [...defaults, ...appsItems, pageItem];
   }, [onAddSubPage]);
 
   return (
@@ -729,7 +770,7 @@ const CollaborativeEditor = ({ provider, currentTheme, workspaceTheme, onAddSubP
       <BlockNoteView editor={editor} theme={workspaceTheme ? buildBlockNoteTheme(workspaceTheme) : currentTheme} slashMenu={false}>
         <SuggestionMenuController
           triggerCharacter="/"
-          getItems={async (query) => filterSuggestionItems(getCustomSlashMenuItems(editor), query)}
+          getItems={async (query) => filterItems(getCustomSlashMenuItems(editor), query)}
         />
         {allPages && allPages.length > 0 && (
           <SuggestionMenuController

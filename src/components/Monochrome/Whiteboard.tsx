@@ -16,16 +16,17 @@ const nodeTypes = {
   editable: EditableNode,
 };
 
-export const Whiteboard = () => {
+export const Whiteboard = ({ scopeId = 'global' }: { scopeId?: string }) => {
   const { 
-    nodes, 
-    edges, 
     onNodesChange, 
     onEdgesChange, 
     onConnect, 
     addNode, 
-    convertNodeToTask 
+    convertNodeToTask,
+    getCanvas
   } = useStore();
+
+  const { nodes, edges } = getCanvas(scopeId);
 
   const [menuVisible, setMenuVisible] = useState<{ id: string, x: number, y: number } | null>(null);
 
@@ -35,10 +36,10 @@ export const Whiteboard = () => {
       id,
       type: 'editable',
       position: { x: Math.random() * 400, y: Math.random() * 400 },
-      data: { label: 'New Concept', isTask: false },
+      data: { label: 'New Concept', isTask: false, scopeId },
     };
-    addNode(newNode);
-  }, [addNode]);
+    addNode(scopeId, newNode);
+  }, [addNode, scopeId]);
 
   const onNodeContextMenu = useCallback((event: React.MouseEvent, node: any) => {
     event.preventDefault();
@@ -47,7 +48,7 @@ export const Whiteboard = () => {
 
   const handleConvertToTask = () => {
     if (menuVisible) {
-      convertNodeToTask(menuVisible.id);
+      convertNodeToTask(scopeId, menuVisible.id);
       setMenuVisible(null);
     }
   };
@@ -57,9 +58,9 @@ export const Whiteboard = () => {
       <ReactFlow
         nodes={nodes}
         edges={edges}
-        onNodesChange={onNodesChange}
-        onEdgesChange={onEdgesChange}
-        onConnect={onConnect}
+        onNodesChange={(changes) => onNodesChange(scopeId, changes)}
+        onEdgesChange={(changes) => onEdgesChange(scopeId, changes)}
+        onConnect={(connection) => onConnect(scopeId, connection)}
         onNodeContextMenu={onNodeContextMenu}
         onPaneClick={() => setMenuVisible(null)}
         nodeTypes={nodeTypes}
@@ -88,7 +89,7 @@ export const Whiteboard = () => {
 
         <Panel position="top-right">
           <div className="glass-panel px-4 py-2 text-[9px] font-black text-secondary uppercase tracking-[0.3em] flex items-center gap-2 opacity-50 hover:opacity-100 transition-opacity">
-             <Layers size={12} /> Infinite Canvas Engine
+             <Layers size={12} /> {scopeId === 'global' ? 'Global Canvas' : `Scope: ${scopeId}`}
           </div>
         </Panel>
       </ReactFlow>

@@ -7,6 +7,7 @@ export const EditableNode = ({ id, data, selected }: any) => {
   const updateNodeData = useStore((state) => state.updateNodeData);
   const [label, setLabel] = useState(data.label);
   const [isEditing, setIsEditing] = useState(false);
+  const scopeId = data.scopeId || 'global';
 
   useEffect(() => {
     setLabel(data.label);
@@ -14,7 +15,7 @@ export const EditableNode = ({ id, data, selected }: any) => {
 
   const onBlur = () => {
     setIsEditing(false);
-    updateNodeData(id, { label });
+    updateNodeData(scopeId, id, { label });
   };
 
   const onKeyDown = (e: React.KeyboardEvent) => {

@@ -1,5 +1,5 @@
 import React from 'react';
-import { LayoutGrid, Database, Palette, Settings, Plus, ChevronLeft, ChevronRight } from 'lucide-react';
+import { LayoutGrid, Database, Palette, Settings, ChevronLeft, ChevronRight } from 'lucide-react';
 
 interface SidebarProps {
   activeTab: 'canvas' | 'database' | 'dashboard';

@@ -1,11 +1,12 @@
 import { useStore } from '../../store/useStore';
 import { Plus, Search, Filter, MoreHorizontal, Calendar, CheckCircle2 } from 'lucide-react';
 
-export const Database = () => {
-  const { tasks, fieldDefinitions, addTask, updateTask } = useStore();
+export const Database = ({ scopeId = 'global' }: { scopeId?: string }) => {
+  const { fieldDefinitions, addTask, updateTask, getTasks } = useStore();
+  const tasks = getTasks(scopeId);
 
   const handleAddTask = () => {
-    addTask({
+    addTask(scopeId, {
       id: `task_${Date.now()}`,
       title: 'New Task',
       description: '',
@@ -19,11 +20,13 @@ export const Database = () => {
     <div className="flex-1 w-full h-full bg-transparent overflow-hidden flex flex-col p-8 animate-in fade-in duration-500">
       <header className="mb-8 flex justify-between items-end">
         <div>
-          <h1 className="text-4xl font-bold tracking-tight text-primary mb-2">Master Database</h1>
+          <h1 className="text-4xl font-bold tracking-tight text-primary mb-2">
+            {scopeId === 'global' ? 'Master Database' : 'Page Database'}
+          </h1>
           <div className="flex items-center gap-4 text-xs font-medium text-secondary uppercase tracking-widest">
             <span className="flex items-center gap-1"><CheckCircle2 size={12} /> {tasks.length} Items</span>
             <span className="w-1 h-1 bg-border rounded-full"></span>
-            <span>Last sync: Just now</span>
+            <span>Scope: {scopeId}</span>
           </div>
         </div>
         <div className="flex gap-2">
@@ -63,7 +66,7 @@ export const Database = () => {
                 <td className="px-6 py-4">
                   <input
                     value={task.title}
-                    onChange={(e) => updateTask(task.id, { title: e.target.value })}
+                    onChange={(e) => updateTask(scopeId, task.id, { title: e.target.value })}
                     className="w-full bg-transparent border-none outline-none font-semibold text-sm focus:ring-1 focus:ring-accent/20 rounded px-1 -ml-1 transition-all"
                     placeholder="Empty title..."
                   />
@@ -73,7 +76,7 @@ export const Database = () => {
                     {fd.type === 'status' ? (
                       <select
                         value={task.customFields[fd.id]}
-                        onChange={(e) => updateTask(task.id, { customFields: { ...task.customFields, [fd.id]: e.target.value } })}
+                        onChange={(e) => updateTask(scopeId, task.id, { customFields: { ...task.customFields, [fd.id]: e.target.value } })}
                         className="bg-accent/5 text-[10px] font-bold uppercase tracking-wider px-2 py-1 border border-border rounded-sm outline-none focus:border-accent transition-colors cursor-pointer"
                       >
                         {fd.options?.map(opt => <option key={opt} value={opt}>{opt}</option>)}

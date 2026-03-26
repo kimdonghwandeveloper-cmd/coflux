@@ -83,14 +83,15 @@ export const Dashboard = () => {
                     data={statusData}
                     cx="50%"
                     cy="50%"
-                    innerRadius={70}
-                    outerRadius={110}
-                    paddingAngle={8}
+                    innerRadius={60}
+                    outerRadius={80}
+                    paddingAngle={5}
                     dataKey="value"
+                    stroke="none"
                     animationBegin={0}
                     animationDuration={1500}
                   >
-                    {statusData.map((entry, index) => (
+                    {statusData.map((_entry, index) => (
                       <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                     ))}
                   </Pie>
@@ -115,7 +116,7 @@ export const Dashboard = () => {
                     dataKey="name" 
                     axisLine={{ stroke: 'rgba(0,0,0,0.1)' }} 
                     tickLine={false} 
-                    tick={{ fontSize: 10, fontWeight: 900, textTransform: 'uppercase' }} 
+                    tick={{ fontSize: 10, fontWeight: 900 }} 
                   />
                   <YAxis 
                     axisLine={{ stroke: 'rgba(0,0,0,0.1)' }} 

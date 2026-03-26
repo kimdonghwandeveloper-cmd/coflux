@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { Task, CustomFieldDefinition, DashboardWidget } from '../lib/types/core';
-import { Node, Edge, applyNodeChanges, applyEdgeChanges, NodeChange, EdgeChange, OnNodesChange, OnEdgesChange, OnConnect, Connection, addEdge } from '@xyflow/react';
+import { Node, Edge, applyNodeChanges, applyEdgeChanges, NodeChange, EdgeChange, Connection, addEdge } from '@xyflow/react';
 
 interface ScopedCanvas {
   nodes: Node[];
