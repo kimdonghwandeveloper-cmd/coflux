@@ -23,6 +23,9 @@ interface CofluxState {
   onConnect: OnConnect;
   setNodes: (nodes: Node[]) => void;
   setEdges: (edges: Edge[]) => void;
+  addNode: (node: Node) => void;
+  updateNodeData: (nodeId: string, data: any) => void;
+  convertNodeToTask: (nodeId: string) => void;
 
   // Actions for Dashboard
   addWidget: (widget: DashboardWidget) => void;
@@ -68,6 +71,45 @@ export const useStore = create<CofluxState>((set, get) => ({
   },
   setNodes: (nodes) => set({ nodes }),
   setEdges: (edges) => set({ edges }),
+  addNode: (node) => set((state) => ({ nodes: [...state.nodes, node] })),
+  updateNodeData: (nodeId, data) => set((state) => {
+    const nodes = state.nodes.map((n) => (n.id === nodeId ? { ...n, data: { ...n.data, ...data } } : n));
+    const node = nodes.find((n) => n.id === nodeId);
+    
+    // If node is linked to a task, update the task title too
+    let tasks = state.tasks;
+    if (node?.data.taskId && data.label) {
+      tasks = tasks.map((t) => (t.id === node.data.taskId ? { ...t, title: data.label } : t));
+    }
+    
+    return { nodes, tasks };
+  }),
+  convertNodeToTask: (nodeId) => {
+    const { nodes, addTask } = get();
+    const node = nodes.find((n) => n.id === nodeId);
+    if (!node || node.data.taskId) return;
+
+    const newTask: Task = {
+      id: `task_${Date.now()}`,
+      title: node.data.label as string || 'New Task from Whiteboard',
+      description: '',
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      customFields: {
+        f_status: 'To Do'
+      },
+    };
+
+    addTask(newTask);
+
+    set({
+      nodes: nodes.map((n) => 
+        n.id === nodeId 
+          ? { ...n, data: { ...n.data, taskId: newTask.id, isTask: true } } 
+          : n
+      ),
+    });
+  },
 
   addWidget: (widget) => set((state) => ({ widgets: [...state.widgets, widget] })),
   updateWidget: (id, updates) => set((state) => ({

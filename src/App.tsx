@@ -14,6 +14,7 @@ import { applyTheme, resolveTheme, WorkspaceTheme, PRESET_THEMES, getContrastCol
 import { supabase, UserProfile } from './lib/supabase';
 import { Database as MonochromeDatabase } from './components/Monochrome/Database';
 import { Dashboard as MonochromeDashboard } from './components/Monochrome/Dashboard';
+import { Whiteboard as MonochromeWhiteboard } from './components/Monochrome/Whiteboard';
 import './lib/i18n'; // E28: i18n 초기화
 import logo from './assets/logo.png';
 import { useTranslation } from 'react-i18next'; // E28: useTranslation 훅 추가
@@ -522,11 +523,7 @@ function App() {
 
         {currentView === 'database' && <MonochromeDatabase />}
         {currentView === 'dashboard' && <MonochromeDashboard />}
-        {currentView === 'whiteboard' && (
-          <div className="flex-1 h-full flex items-center justify-center bg-gray-50/50 dark:bg-gray-950/50">
-            <h2 className="text-4xl font-bold opacity-20">Whiteboard View (Phase 3)</h2>
-          </div>
-        )}
+        {currentView === 'whiteboard' && <MonochromeWhiteboard />}
       </div>
 
       {knowledgeMapOpen && (
