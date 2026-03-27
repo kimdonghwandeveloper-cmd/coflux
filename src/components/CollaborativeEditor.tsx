@@ -7,7 +7,7 @@ import { filterSuggestionItems as filterItems } from "@blocknote/core/extensions
 import "@blocknote/mantine/style.css";
 import { PageData } from '../App';
 import { WorkspaceTheme } from '../lib/theme';
-import { Sparkles, Plus, Loader2, TrendingUp, PieChart as PieIcon } from 'lucide-react';
+import { Sparkles, Plus, Loader2 } from 'lucide-react';
 import { SMART_TEMPLATES, Template } from '../lib/templates';
 import { routeAiTask } from '../lib/ai_router';
 import * as Y from 'yjs';
@@ -24,6 +24,21 @@ const schema = BlockNoteSchema.create({
     whiteboard: WhiteboardBlock(),
     chart: ChartBlock(),
     mermaid: MermaidBlock(),
+    // Add columns to schema so blockToNode and replaceBlocks work in 0.47
+    columnList: {
+      config: {
+        type: "columnList",
+        propSchema: {},
+        content: "none",
+      },
+    } as any,
+    column: {
+      config: {
+        type: "column",
+        propSchema: {},
+        content: "none",
+      },
+    } as any,
   },
 });
 
@@ -672,24 +687,25 @@ const CollaborativeEditor = ({ provider, currentTheme, workspaceTheme, onAddSubP
           const draggedContent = stripId(dragged);
           const targetContent = stripId(target);
 
-          // Construct a column group with two columns
-          // BlockNote 0.47 requires props and content even for structural blocks
-          const columnGroupBlock = {
-            type: "columnGroup",
+          // Construct a column list with two columns
+          // BlockNote 0.47 uses 'columnList' and 'column'
+          const columnListBlock = {
+            id: "_cl_" + Math.random().toString(36).slice(2, 9),
+            type: "columnList",
             props: {},
             content: [],
             children: isLeft 
               ? [
-                  { type: "column", props: {}, content: [], children: [draggedContent] },
-                  { type: "column", props: {}, content: [], children: [targetContent] }
+                  { id: "_c1_" + Math.random().toString(36).slice(2, 9), type: "column", props: {}, content: [], children: [draggedContent] },
+                  { id: "_c2_" + Math.random().toString(36).slice(2, 9), type: "column", props: {}, content: [], children: [targetContent] }
                 ]
               : [
-                  { type: "column", props: {}, content: [], children: [targetContent] },
-                  { type: "column", props: {}, content: [], children: [draggedContent] }
+                  { id: "_c1_" + Math.random().toString(36).slice(2, 9), type: "column", props: {}, content: [], children: [targetContent] },
+                  { id: "_c2_" + Math.random().toString(36).slice(2, 9), type: "column", props: {}, content: [], children: [draggedContent] }
                 ]
           };
 
-          editor.replaceBlocks([targetId], [columnGroupBlock as any]);
+          editor.replaceBlocks([targetId], [columnListBlock as any]);
           editor.removeBlocks([id]);
         } else {
           editor.insertBlocks([content], { id: targetId }, placement as 'before' | 'after');

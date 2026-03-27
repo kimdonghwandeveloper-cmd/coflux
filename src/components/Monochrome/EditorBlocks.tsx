@@ -80,7 +80,7 @@ export const ChartBlock = createReactBlockSpec(
   },
   {
     render: (props: any) => {
-      const { block, editor } = props;
+      const { block } = props;
       const scopeId = block.props.scopeId;
       const type = block.props.type || "bar";
       return (

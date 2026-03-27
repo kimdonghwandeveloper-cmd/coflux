@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { Plus, Settings, Moon, Sun, MoreHorizontal, Star, Trash2, ChevronDown, ChevronRight, RotateCcw, X, GripVertical, Sparkles, LayoutGrid, Database, Palette } from 'lucide-react';
+import { Plus, Settings, Moon, Sun, MoreHorizontal, Star, Trash2, ChevronDown, ChevronRight, RotateCcw, X, GripVertical, Sparkles as SparklesIcon, LayoutGrid, Database } from 'lucide-react';
 import { PageData, WorkspaceData } from '../App';
 import { TOGGLE_THEME_IDS } from '../lib/theme';
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, DragEndEvent, DragStartEvent, DragOverlay } from '@dnd-kit/core';
@@ -348,7 +348,7 @@ export const Sidebar = ({
           }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '11px', fontWeight: 700, color: 'var(--accent)', letterSpacing: '0.05em' }}>
-                <Sparkles size={12} /> <span>COFLUX INSIGHTS</span>
+                <SparklesIcon size={12} /> <span>COFLUX INSIGHTS</span>
               </div>
               <div onClick={handleDismissInsights} style={{ cursor: 'pointer', padding: '2px', display: 'flex', opacity: 0.6 }}>
                 <X size={12} color="var(--text-secondary)" />

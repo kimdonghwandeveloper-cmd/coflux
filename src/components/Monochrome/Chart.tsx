@@ -4,13 +4,13 @@ import {
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, Legend,
   ScatterChart, Scatter, ZAxis
 } from 'recharts';
-import { useStore, ChartConfig, CsvAnalysis } from '../../store/useStore';
+import { useStore, CsvAnalysis } from '../../store/useStore';
 import { invoke } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-dialog';
 import { 
   Upload, BarChart2, PieChart as PieIcon, 
   TrendingUp, Settings2, Database as DbIcon,
-  Plus, Trash2, Edit3, X, MousePointer2, Box, Layers, Maximize
+  Plus, Trash2, Edit3, X, MousePointer2, Layers, Maximize
 } from 'lucide-react';
 import { listen } from '@tauri-apps/api/event';
 
@@ -248,7 +248,7 @@ export const ChartBlock: React.FC<ChartBlockProps> = ({ scopeId, initialType }) 
                 onClick={() => setIsDataEditorOpen(true)}
                 className="cursor-pointer"
               >
-                {data.map((entry, index) => (
+                {data.map((_, index) => (
                   <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                 ))}
               </Scatter>
@@ -266,7 +266,7 @@ export const ChartBlock: React.FC<ChartBlockProps> = ({ scopeId, initialType }) 
                 onClick={() => setIsDataEditorOpen(true)}
                 className="cursor-pointer"
               >
-                {data.map((entry, index) => (
+                {data.map((_, index) => (
                   <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} stroke="var(--bg-primary)" strokeWidth={2} className="hover:opacity-80 transition-opacity" />
                 ))}
               </Pie>

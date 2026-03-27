@@ -23,7 +23,7 @@
 /* ─────────────────────────────────────────────────────────────────────────────
    BlockNote Multi-Column Layout (Side-by-Side)
    ───────────────────────────────────────────────────────────────────────────── */
-.bn-column-group {
+.bn-column-list {
   display: flex !important;
   gap: 20px !important;
   margin: 16px 0 !important;
