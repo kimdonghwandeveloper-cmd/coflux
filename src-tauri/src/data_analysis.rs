@@ -4,11 +4,21 @@ use std::collections::HashMap;
 
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
+pub struct ColumnStats {
+    pub mean: Option<f64>,
+    pub median: Option<f64>,
+    pub min: Option<f64>,
+    pub max: Option<f64>,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+#[serde(rename_all = "camelCase")]
 pub struct CsvSummary {
     pub columns: Vec<String>,
     pub row_count: usize,
     pub sample_data: Vec<HashMap<String, serde_json::Value>>,
     pub column_types: HashMap<String, String>,
+    pub stats: HashMap<String, ColumnStats>,
 }
 
 #[tauri::command]
@@ -24,10 +34,31 @@ pub fn coflux_analyze_csv(path: String) -> Result<CsvSummary, String> {
     let columns = df.get_column_names().iter().map(|s| s.to_string()).collect();
     let row_count = df.height();
     
-    // Get column types
+    // Get column types and stats
     let mut column_types = HashMap::new();
-    for series in df.get_columns() {
-        column_types.insert(series.name().to_string(), format!("{:?}", series.dtype()));
+    let mut stats = HashMap::new();
+
+    for col in df.get_columns() {
+        let name = col.name().to_string();
+        column_types.insert(name.clone(), format!("{:?}", col.dtype()));
+
+        if col.dtype().is_numeric() {
+            let s = col.as_materialized_series();
+            let mean = s.mean();
+            let median = s.median();
+            
+            // In Polars 0.45, min/max on Series returns AnyValue. 
+            // We need to extract the value as f64.
+            let min = s.min::<f64>().ok().flatten();
+            let max = s.max::<f64>().ok().flatten();
+
+            stats.insert(name, ColumnStats {
+                mean,
+                median,
+                min,
+                max,
+            });
+        }
     }
 
     // Extract sample data (first 10 rows)
@@ -58,5 +89,6 @@ pub fn coflux_analyze_csv(path: String) -> Result<CsvSummary, String> {
         row_count,
         sample_data,
         column_types,
+        stats,
     })
 }

@@ -1,0 +1,11 @@
+    Checking coflux v0.2.6 (C:\Users\karl3\coflux\src-tauri)
+warning: enum `PageScope` is never used
+ --> src\rag.rs:7:10
+  |
+7 | pub enum PageScope {
+  |          ^^^^^^^^^
+  |
+  = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: `coflux` (lib) generated 1 warning
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 21.31s

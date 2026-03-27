@@ -10,11 +10,15 @@ import { open } from '@tauri-apps/plugin-dialog';
 import { 
   Upload, BarChart2, PieChart as PieIcon, 
   TrendingUp, Settings2, Database as DbIcon,
-  Plus, Trash2, Edit3, X, MousePointer2, Box, Layers
+  Plus, Trash2, Edit3, X, MousePointer2, Box, Layers, Maximize
 } from 'lucide-react';
 import { listen } from '@tauri-apps/api/event';
 
-const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8', '#82ca9d'];
+const COLORS = [
+  'var(--brand-1)', 
+  'var(--brand-2)',
+  '#00C49F', '#FFBB28', '#FF8042', '#8884d8', '#82ca9d'
+];
 
 const DEFAULT_DATA = [
   { name: 'Category 1', value: 45 },
@@ -28,41 +32,11 @@ interface ChartBlockProps {
 }
 
 const CHART_TYPES = [
-  {
-    id: 'bar',
-    name: '막대 그래프 (Bar Chart)',
-    desc: '서로 다른 항목 간의 수치를 비교할 때 최적입니다.',
-    tip: '팁: 항목이 너무 많으면 가로 막대 그래프를 사용해 가독성을 높일 수 있습니다.',
-    icon: <BarChart2 size={24} />
-  },
-  {
-    id: 'line',
-    name: '꺾은선 그래프 (Line Chart)',
-    desc: '시간의 흐름에 따른 데이터의 추세(Trend)를 보여줍니다.',
-    tip: '특징: 데이터의 연속성이 중요할 때 빛을 발합니다.',
-    icon: <TrendingUp size={24} />
-  },
-  {
-    id: 'pie',
-    name: '파이 차트 (Pie Chart)',
-    desc: '전체에서 각 부분이 차지하는 비율(Proportion)을 한눈에 보여줍니다.',
-    tip: '주의: 항목이 5~6개 이상이면 적절히 묶어주는 게 좋습니다.',
-    icon: <PieIcon size={24} />
-  },
-  {
-    id: 'scatter',
-    name: '산점도 (Scatter Plot)',
-    desc: '두 변수 간의 상관관계를 점으로 나타낸 그래프입니다.',
-    tip: '특징: 데이터가 얼마나 퍼져 있는지와 특정 패턴을 확인하기 좋습니다.',
-    icon: <MousePointer2 size={24} />
-  },
-  {
-    id: 'histogram',
-    name: '히스토그램 (Histogram)',
-    desc: '연속형 데이터의 분포를 나타냅니다.',
-    tip: '특징: 데이터가 특정 구간에 얼마나 몰려 있는지 확인하는 데 사용됩니다.',
-    icon: <Layers size={24} />
-  }
+  { id: 'bar', name: '막대', icon: <BarChart2 size={20} /> },
+  { id: 'line', name: '꺾은선', icon: <TrendingUp size={20} /> },
+  { id: 'pie', name: '파이', icon: <PieIcon size={20} /> },
+  { id: 'scatter', name: '산점도', icon: <MousePointer2 size={20} /> },
+  { id: 'histogram', name: '히스토그램', icon: <Layers size={20} /> }
 ];
 
 export const ChartBlock: React.FC<ChartBlockProps> = ({ scopeId, initialType }) => {
@@ -175,28 +149,60 @@ export const ChartBlock: React.FC<ChartBlockProps> = ({ scopeId, initialType }) 
 
   const data = prepareData();
 
+  const getDisplaySubtitle = () => {
+    // If user has set a custom subtitle, use it
+    if (config.subtitle && config.subtitle !== 'Generated via CoFlux Insight Engine' && config.subtitle !== 'Click to add description') {
+      return config.subtitle;
+    }
+    
+    // Auto-generate from CSV stats if available
+    if (config.dataSourceType === 'csv' && csvAnalysis?.stats) {
+      // Find the first numeric column that is likely being plotted (usually 'value' or the first numeric one)
+      const numericCols = Object.keys(csvAnalysis.stats);
+      if (numericCols.length > 0) {
+        // Simple heuristic: if there's a column named 'value', use it, otherwise use the first one
+        const targetCol = numericCols.find(c => c.toLowerCase() === 'value') || numericCols[0];
+        const stat = csvAnalysis.stats[targetCol];
+        if (stat) {
+          return `${targetCol} Stats: Avg ${stat.mean?.toFixed(1)} | Med ${stat.median?.toFixed(1)} | Range ${stat.min}~${stat.max}`;
+        }
+      }
+    }
+    
+    return config.subtitle || 'Generated via CoFlux Insight Engine';
+  };
+
+  const displaySubtitle = getDisplaySubtitle();
+
   const renderChart = () => {
     return (
-      <div className="h-[280px] w-full mt-2 flex items-center justify-center transition-all">
+      <div className="h-[280px] w-full mt-2 flex items-center justify-center transition-all overflow-hidden">
         <ResponsiveContainer width="100%" height="100%">
           {config.type === 'bar' || config.type === 'histogram' ? (
             <BarChart data={data} margin={{ top: 10, right: 10, left: -20, bottom: 0 }} barCategoryGap={config.type === 'histogram' ? 0 : '10%'}>
-              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgba(0,0,0,0.03)" />
-              <XAxis dataKey="name" axisLine={false} tickLine={false} fontSize={10} tick={{ fill: '#aaa' }} />
-              <YAxis axisLine={false} tickLine={false} fontSize={10} tick={{ fill: '#aaa' }} />
-              <Tooltip 
-                contentStyle={{ 
-                  backgroundColor: 'white', 
-                  border: '1px solid #eee',
+              <defs>
+                <linearGradient id={`barGrad-${scopeId}`} x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="var(--brand-1)" stopOpacity={1} />
+                  <stop offset="100%" stopColor="var(--brand-2, var(--brand-1))" stopOpacity={0.8} />
+                </linearGradient>
+              </defs>
+              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border-color)" opacity={0.3} />
+              <XAxis dataKey="name" axisLine={false} tickLine={false} fontSize={10} tick={{ fill: 'var(--text-secondary)' }} />
+              <YAxis axisLine={false} tickLine={false} fontSize={10} tick={{ fill: 'var(--text-secondary)' }} domain={[0, config.maxValue || 100]} />
+              <Tooltip
+                contentStyle={{
+                  backgroundColor: 'var(--bg-surface)',
+                  border: '1px solid var(--border-color)',
                   borderRadius: '12px',
-                  boxShadow: '0 8px 16px rgba(0,0,0,0.05)',
+                  boxShadow: '0 8px 16px rgba(0,0,0,0.1)',
                   fontSize: '11px',
-                  fontWeight: 'bold'
+                  fontWeight: 'bold',
+                  color: 'var(--text-primary)'
                 }}
               />
               <Bar 
                 dataKey="value" 
-                fill="#111" 
+                fill={`url(#barGrad-${scopeId})`} 
                 radius={config.type === 'histogram' ? [0, 0, 0, 0] : [4, 4, 0, 0]} 
                 barSize={config.type === 'histogram' ? undefined : 24}
                 onClick={() => setIsDataEditorOpen(true)}
@@ -205,30 +211,40 @@ export const ChartBlock: React.FC<ChartBlockProps> = ({ scopeId, initialType }) 
             </BarChart>
           ) : config.type === 'line' ? (
             <LineChart data={data} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgba(0,0,0,0.03)" />
-              <XAxis dataKey="name" axisLine={false} tickLine={false} fontSize={10} tick={{ fill: '#aaa' }} />
-              <YAxis axisLine={false} tickLine={false} fontSize={10} tick={{ fill: '#aaa' }} />
+              <defs>
+                <linearGradient id={`lineGrad-${scopeId}`} x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="var(--brand-1)" stopOpacity={0.2} />
+                  <stop offset="100%" stopColor="var(--brand-2, var(--brand-1))" stopOpacity={0} />
+                </linearGradient>
+              </defs>
+              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border-color)" opacity={0.3} />
+              <XAxis dataKey="name" axisLine={false} tickLine={false} fontSize={10} tick={{ fill: 'var(--text-secondary)' }} />
+              <YAxis axisLine={false} tickLine={false} fontSize={10} tick={{ fill: 'var(--text-secondary)' }} domain={[0, config.maxValue || 100]} />
               <Tooltip />
+              {/* Optional Area for premium look */}
+              <Bar dataKey="value" fill={`url(#lineGrad-${scopeId})`} barSize={1000} isAnimationActive={false} />
               <Line 
-                type="monotone" 
+                type="linear" 
                 dataKey="value" 
-                stroke="#111" 
+                stroke="var(--brand-1, var(--text-primary))" 
                 strokeWidth={3} 
-                dot={{ r: 4, fill: '#111', stroke: 'white', strokeWidth: 2 }} 
-                activeDot={{ r: 6, onClick: () => setIsDataEditorOpen(true), className: 'cursor-pointer' }} 
+                dot={{ r: 6, fill: "var(--brand-1, var(--text-primary))", stroke: 'var(--bg-primary)', strokeWidth: 2 }} 
+                activeDot={{ r: 8, onClick: () => setIsDataEditorOpen(true), className: 'cursor-pointer' }}
+                isAnimationActive={false}
+                connectNulls
               />
             </LineChart>
           ) : config.type === 'scatter' ? (
             <ScatterChart margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,0,0,0.03)" />
-              <XAxis type="category" dataKey="name" name="Item" axisLine={false} tickLine={false} fontSize={10} tick={{ fill: '#aaa' }} />
-              <YAxis type="number" dataKey="value" name="Value" axisLine={false} tickLine={false} fontSize={10} tick={{ fill: '#aaa' }} />
+              <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)" opacity={0.3} />
+              <XAxis type="category" dataKey="name" name="Item" axisLine={false} tickLine={false} fontSize={10} tick={{ fill: 'var(--text-secondary)' }} />
+              <YAxis type="number" dataKey="value" name="Value" axisLine={false} tickLine={false} fontSize={10} tick={{ fill: 'var(--text-secondary)' }} domain={[0, config.maxValue || 100]} />
               <ZAxis range={[60, 400]} />
               <Tooltip cursor={{ strokeDasharray: '3 3' }} />
               <Scatter 
                 name="Data" 
                 data={data} 
-                fill="#111" 
+                fill="var(--brand-1)" 
                 onClick={() => setIsDataEditorOpen(true)}
                 className="cursor-pointer"
               >
@@ -251,7 +267,7 @@ export const ChartBlock: React.FC<ChartBlockProps> = ({ scopeId, initialType }) 
                 className="cursor-pointer"
               >
                 {data.map((entry, index) => (
-                  <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} stroke="white" strokeWidth={2} className="hover:opacity-80 transition-opacity" />
+                  <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} stroke="var(--bg-primary)" strokeWidth={2} className="hover:opacity-80 transition-opacity" />
                 ))}
               </Pie>
               <Tooltip />
@@ -271,33 +287,24 @@ export const ChartBlock: React.FC<ChartBlockProps> = ({ scopeId, initialType }) 
 
   const renderSelector = () => {
     return (
-      <div className="bg-white/90 backdrop-blur-xl border border-black/5 rounded-2xl p-8 shadow-2xl animate-in zoom-in-95 duration-300">
-        <h4 className="text-[10px] font-black uppercase tracking-[0.3em] mb-8 text-center opacity-40">Visualization Model Selection</h4>
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6 max-w-4xl mx-auto">
+      <div className="bg-bg-surface/90 backdrop-blur-xl border border-border-color rounded-2xl p-5 shadow-2xl animate-in zoom-in-95 duration-300" style={{ backgroundColor: 'var(--bg-surface)', borderColor: 'var(--border-color)' }}>
+        <h4 className="text-[10px] font-black uppercase tracking-[0.3em] mb-4 text-center text-text-secondary opacity-40">Visualization Model Selection</h4>
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 max-w-4xl mx-auto">
           {CHART_TYPES.map(ct => (
             <button 
               key={ct.id}
-              onClick={() => setChartConfig(scopeId, { ...config, type: ct.id as any })}
-              className="group/item flex flex-col p-6 rounded-2xl border-2 border-transparent hover:border-black hover:bg-black/5 transition-all text-left h-full"
+              onClick={() => {
+                setChartConfig(scopeId, { ...config, type: ct.id as any });
+              }}
+              className="flex flex-col items-center justify-center p-3 rounded-xl hover:bg-black/5 transition-all group border border-transparent hover:border-text-primary/10"
             >
-              <div className="w-12 h-12 rounded-xl bg-black/5 flex items-center justify-center mb-4 group-hover/item:scale-110 group-hover/item:bg-primary group-hover/item:text-white transition-all">
+              <div className="w-10 h-10 rounded-lg bg-text-primary/5 flex items-center justify-center mb-2 group-hover:scale-110 transition-transform">
                 {ct.icon}
               </div>
-              <h5 className="text-xs font-black uppercase tracking-widest mb-2 font-black">{ct.name}</h5>
-              <p className="text-[9px] font-bold text-secondary opacity-60 leading-relaxed mb-4">{ct.desc}</p>
-              <div className="mt-auto pt-4 border-t border-black/5">
-                <p className="text-[8px] font-black uppercase tracking-wider text-primary opacity-0 group-hover/item:opacity-100 transition-opacity">
-                  {ct.tip}
-                </p>
-              </div>
+              <span className="text-[10px] font-bold text-text-secondary">{ct.name}</span>
             </button>
           ))}
-          {/* Missing items grid filler */}
-          {[...Array(3)].map((_, i) => (
-            <div key={i} className="p-6 rounded-2xl border-2 border-dashed border-black/5 flex items-center justify-center">
-              <Plus size={24} className="opacity-10" />
-            </div>
-          ))}
+          {/* No filler items for shorter height */}
         </div>
       </div>
     );
@@ -349,7 +356,7 @@ export const ChartBlock: React.FC<ChartBlockProps> = ({ scopeId, initialType }) 
                   onClick={() => setEditingSubtitle(true)}
                   className="text-[10px] font-bold text-secondary uppercase tracking-widest opacity-60 cursor-text hover:opacity-100 transition-opacity mt-1"
                 >
-                  {config.subtitle || 'Click to add description'}
+                  {displaySubtitle}
                 </p>
               )}
             </div>
@@ -468,10 +475,26 @@ export const ChartBlock: React.FC<ChartBlockProps> = ({ scopeId, initialType }) 
                 </button>
               </div>
             ) : isDataEditorOpen ? (
-              <div className="bg-bg-secondary/5 border border-black/5 rounded-xl p-6 animate-in fade-in slide-in-from-bottom-4 duration-300">
+              <div className="bg-bg-secondary/5 border border-border-color rounded-xl p-6 animate-in fade-in slide-in-from-bottom-4 duration-300" style={{ backgroundColor: 'var(--bg-secondary)', opacity: 0.95 }}>
                 <div className="flex justify-between items-center mb-6">
-                  <h4 className="text-[10px] font-black uppercase tracking-widest flex items-center gap-2"><Edit3 size={14}/> Manual Data Editor</h4>
-                  <button onClick={() => setIsDataEditorOpen(false)} className="p-1 hover:bg-black/5 rounded-full"><X size={16} /></button>
+                  <h4 className="text-[10px] font-black uppercase tracking-widest flex items-center gap-2 text-text-primary"><Edit3 size={14}/> Manual Data Editor</h4>
+                  <button onClick={() => setIsDataEditorOpen(false)} className="p-1 hover:bg-text-primary/10 rounded-full text-text-primary"><X size={16} /></button>
+                </div>
+
+                <div className="mb-6 p-4 bg-text-primary/5 rounded-xl border border-border-color">
+                  <h5 className="text-[10px] font-black uppercase tracking-widest mb-3 flex items-center gap-2 text-text-primary">
+                    <Maximize size={12} /> Chart Scale Settings
+                  </h5>
+                  <div className="flex items-center gap-3">
+                    <span className="text-[10px] font-bold text-text-secondary">Set Max Value:</span>
+                    <input 
+                      type="number"
+                      className="bg-bg-primary border border-border-color p-2 rounded-lg text-xs font-bold outline-none focus:border-primary w-24 text-text-primary"
+                      value={config.maxValue || 100}
+                      onChange={(e) => setChartConfig(scopeId, { ...config, maxValue: Math.max(1, Number(e.target.value) || 100) })}
+                    />
+                    <span className="text-[9px] font-bold text-text-secondary opacity-50 px-2 py-1 bg-text-primary/5 rounded uppercase">Default: 100</span>
+                  </div>
                 </div>
                 
                 <div className="space-y-3">
@@ -484,7 +507,7 @@ export const ChartBlock: React.FC<ChartBlockProps> = ({ scopeId, initialType }) 
                   {(config.customData || DEFAULT_DATA).map((row, idx) => (
                     <div key={idx} className="grid grid-cols-12 gap-3 items-center group/row animate-in slide-in-from-left-2 duration-200" style={{ animationDelay: `${idx * 40}ms` }}>
                       <input 
-                        className="col-span-8 bg-white border border-border p-2.5 rounded-lg text-xs font-bold outline-none focus:border-primary transition-all"
+                        className="col-span-8 bg-bg-primary border border-border-color p-2.5 rounded-lg text-xs font-bold outline-none focus:border-primary transition-all text-text-primary"
                         value={row.name}
                         onChange={(e) => {
                           const newData = [...(config.customData || DEFAULT_DATA)];
@@ -493,12 +516,19 @@ export const ChartBlock: React.FC<ChartBlockProps> = ({ scopeId, initialType }) 
                         }}
                       />
                       <input 
-                        type="number"
-                        className="col-span-3 bg-white border border-border p-2.5 rounded-lg text-xs font-bold outline-none focus:border-primary transition-all"
-                        value={row.value}
+                        className={`col-span-3 bg-bg-primary border p-2.5 rounded-lg text-xs font-bold outline-none transition-all ${isNaN(row.value) ? 'border-red-500 focus:border-red-600 bg-red-500/10' : 'border-border-color focus:border-primary'} text-text-primary`}
+                        value={isNaN(row.value) ? '' : row.value}
+                        placeholder="0"
                         onChange={(e) => {
+                          const val = e.target.value;
+                          const numVal = val === '' ? 0 : Number(val);
+                          
+                          // Prevent input if exceeds user-defined maxValue
+                          const currentMax = config.maxValue || 100;
+                          if (numVal > currentMax) return; 
+
                           const newData = [...(config.customData || DEFAULT_DATA)];
-                          newData[idx] = { ...row, value: Number(e.target.value) };
+                          newData[idx] = { ...row, value: numVal };
                           setChartConfig(scopeId, { ...config, customData: newData, dataSourceType: 'manual' });
                         }}
                       />

@@ -16,7 +16,15 @@ export interface ChartConfig {
   subtitle?: string;
   xAxisKey?: string;
   yAxisKey?: string;
+  maxValue?: number;
   customData?: { name: string, value: number }[];
+}
+
+export interface ColumnStats {
+  mean?: number;
+  median?: number;
+  min?: number;
+  max?: number;
 }
 
 export interface CsvAnalysis {
@@ -24,6 +32,7 @@ export interface CsvAnalysis {
   rowCount: number;
   sampleData: any[];
   columnTypes: Record<string, string>;
+  stats: Record<string, ColumnStats>;
 }
 
 interface CofluxState {

@@ -1,0 +1,53 @@
+    Checking coflux v0.2.6 (C:\Users\karl3\coflux\src-tauri)
+error[E0277]: the trait bound `polars::prelude::AnyValue<'_>: NumCast` is not satisfied
+   --> src\data_analysis.rs:52:25
+    |
+ 52 |             let min = s.min().ok().flatten().and_then(|v| {
+    |                         ^^^ the trait `NumCast` is not implemented for `polars::prelude::AnyValue<'_>`
+    |
+    = help: the following other types implement trait `NumCast`:
+              Wrapping<T>
+              f32
+              f64
+              i128
+              i16
+              i32
+              i64
+              i8
+            and 7 others
+note: required by a bound in `polars::prelude::Series::min`
+   --> C:\Users\karl3\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\polars-core-0.45.1\src\series\mod.rs:516:12
+    |
+514 |     pub fn min<T>(&self) -> PolarsResult<Option<T>>
+    |            --- required by a bound in this associated function
+515 |     where
+516 |         T: NumCast,
+    |            ^^^^^^^ required by this bound in `Series::min`
+
+error[E0277]: the trait bound `polars::prelude::AnyValue<'_>: NumCast` is not satisfied
+   --> src\data_analysis.rs:61:25
+    |
+ 61 |             let max = s.max().ok().flatten().and_then(|v| {
+    |                         ^^^ the trait `NumCast` is not implemented for `polars::prelude::AnyValue<'_>`
+    |
+    = help: the following other types implement trait `NumCast`:
+              Wrapping<T>
+              f32
+              f64
+              i128
+              i16
+              i32
+              i64
+              i8
+            and 7 others
+note: required by a bound in `polars::prelude::Series::max`
+   --> C:\Users\karl3\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\polars-core-0.45.1\src\series\mod.rs:527:12
+    |
+525 |     pub fn max<T>(&self) -> PolarsResult<Option<T>>
+    |            --- required by a bound in this associated function
+526 |     where
+527 |         T: NumCast,
+    |            ^^^^^^^ required by this bound in `Series::max`
+
+For more information about this error, try `rustc --explain E0277`.
+error: could not compile `coflux` (lib) due to 2 previous errors

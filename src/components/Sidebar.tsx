@@ -378,10 +378,12 @@ export const Sidebar = ({
           <span style={{ fontSize: '13px' }}>Database</span>
         </div>
 
+        {/* 
         <div className={`sidebar-item ${currentView === 'dashboard' ? 'active' : ''}`} onClick={() => setCurrentView('dashboard')}>
           <Palette size={16} />
           <span style={{ fontSize: '13px' }}>Dashboard</span>
         </div>
+        */}
       </div>
 
       <div style={{ flex: 1, overflowY: 'auto' }}>

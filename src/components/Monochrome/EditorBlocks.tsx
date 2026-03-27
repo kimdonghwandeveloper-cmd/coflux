@@ -3,6 +3,7 @@ import { defaultProps } from "@blocknote/core";
 import { Database } from "./Database";
 import { Whiteboard } from "./Whiteboard";
 import { ChartBlock as ChartComponent } from "./Chart";
+import { Mermaid } from "./Mermaid";
 
 // Database Block Specification Using createReactBlockSpec (v0.47+ factory style)
 export const DatabaseBlock = createReactBlockSpec(
@@ -61,6 +62,7 @@ export const WhiteboardBlock = createReactBlockSpec(
     },
   }
 );
+
 // Chart Block Specification
 export const ChartBlock = createReactBlockSpec(
   {
@@ -78,7 +80,7 @@ export const ChartBlock = createReactBlockSpec(
   },
   {
     render: (props: any) => {
-      const { block } = props;
+      const { block, editor } = props;
       const scopeId = block.props.scopeId;
       const type = block.props.type || "bar";
       return (
@@ -87,6 +89,39 @@ export const ChartBlock = createReactBlockSpec(
           onMouseDown={(e) => e.stopPropagation()}
         >
           <ChartComponent scopeId={scopeId} initialType={type} />
+        </div>
+      );
+    },
+  }
+);
+
+// Mermaid Block Specification
+export const MermaidBlock = createReactBlockSpec(
+  {
+    type: "mermaid",
+    propSchema: {
+      ...defaultProps,
+      code: {
+        default: 'graph TD\n  A[Start] --> B(Concept)\n  B --> C{Strategy}\n  C -->|Fast| D[Execution]\n  C -->|Slow| E[Planning]\n  D --> F((Launch))\n  E --> B',
+      },
+    },
+    content: "none",
+  },
+  {
+    render: (props: any) => {
+      const { block, editor } = props;
+      const code = block.props.code;
+      return (
+        <div 
+          className="w-full my-4 bg-transparent group/block relative"
+          onMouseDown={(e) => e.stopPropagation()}
+        >
+          <Mermaid 
+            code={code} 
+            onCodeChange={(newCode) => {
+              editor.updateBlock(block, { props: { ...block.props, code: newCode } });
+            }} 
+          />
         </div>
       );
     },

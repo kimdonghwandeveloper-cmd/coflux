@@ -13,7 +13,7 @@ import { routeAiTask } from '../lib/ai_router';
 import * as Y from 'yjs';
 import { invoke } from '@tauri-apps/api/core';
 import { BlockNoteSchema, defaultBlockSpecs } from "@blocknote/core";
-import { DatabaseBlock, WhiteboardBlock, ChartBlock } from "./Monochrome/EditorBlocks";
+import { DatabaseBlock, WhiteboardBlock, ChartBlock, MermaidBlock } from "./Monochrome/EditorBlocks";
 import { RiDatabase2Line, RiArtboardLine, RiFileLine, RiBarChart2Line } from 'react-icons/ri';
 
 // Create a custom schema that includes our Database and Whiteboard blocks
@@ -23,6 +23,7 @@ const schema = BlockNoteSchema.create({
     database: DatabaseBlock(),
     whiteboard: WhiteboardBlock(),
     chart: ChartBlock(),
+    mermaid: MermaidBlock(),
   },
 });
 
@@ -484,7 +485,7 @@ const CollaborativeEditor = ({ provider, currentTheme, workspaceTheme, onAddSubP
       ghost: HTMLDivElement;
       line: HTMLDivElement;
       targetId: string;
-      placement: 'before' | 'after';
+      placement: 'before' | 'after' | 'before-column' | 'after-column';
       scrollParent: HTMLElement; // cached at drag-start, reused per frame
     };
     let ds: DS | null = null;
@@ -585,13 +586,50 @@ const CollaborativeEditor = ({ provider, currentTheme, workspaceTheme, onAddSubP
       const target = blockAtY(container, e.clientY);
       if (target && target.getAttribute('data-id') !== ds.id) {
         const r = target.getBoundingClientRect();
-        const above = e.clientY < r.top + r.height / 2;
-        ds.targetId = target.getAttribute('data-id')!;
-        ds.placement = above ? 'before' : 'after';
-        ds.line.style.display = 'block';
-        ds.line.style.top = `${(above ? r.top : r.bottom) - 1.5}px`;
-        ds.line.style.left = `${r.left + 36}px`;
-        ds.line.style.width = `${r.width - 40}px`;
+        
+        // Detect side areas (15% of width) for multi-column layout
+        const sideWidth = r.width * 0.15;
+        const isLeft = e.clientX > r.left && e.clientX < r.left + sideWidth;
+        const isRight = e.clientX < r.right && e.clientX > r.right - sideWidth;
+
+        if (isLeft || isRight) {
+          ds.placement = isLeft ? 'before-column' : 'after-column';
+          ds.targetId = target.getAttribute('data-id')!;
+          ds.line.style.display = 'block';
+          
+          // Vertical drop indicator
+          Object.assign(ds.line.style, {
+            height: `${r.height}px`,
+            width: '4px',
+            top: `${r.top}px`,
+            left: `${isLeft ? r.left : r.right - 4}px`,
+          });
+          // Update dots for vertical orientation
+          const dots = ds.line.querySelectorAll('span');
+          if (dots.length >= 2) {
+            Object.assign(dots[0].style, { left: '-3px', top: '0', bottom: 'auto', transform: 'none' });
+            Object.assign(dots[1].style, { left: '-3px', bottom: '0', top: 'auto', transform: 'none' });
+          }
+        } else {
+          const above = e.clientY < r.top + r.height / 2;
+          ds.targetId = target.getAttribute('data-id')!;
+          ds.placement = above ? 'before' : 'after';
+          ds.line.style.display = 'block';
+          
+          // Horizontal drop indicator
+          Object.assign(ds.line.style, {
+            height: '3px',
+            width: `${r.width - 40}px`,
+            top: `${(above ? r.top : r.bottom) - 1.5}px`,
+            left: `${r.left + 36}px`,
+          });
+          // Update dots for horizontal orientation
+          const dots = ds.line.querySelectorAll('span');
+          if (dots.length >= 2) {
+            Object.assign(dots[0].style, { left: '-5px', top: '50%', bottom: 'auto', transform: 'translateY(-50%)' });
+            Object.assign(dots[1].style, { right: '-5px', top: '50%', bottom: 'auto', left: 'auto', transform: 'translateY(-50%)' });
+          }
+        }
       } else {
         ds.targetId = '';
         ds.line.style.display = 'none';
@@ -611,11 +649,52 @@ const CollaborativeEditor = ({ provider, currentTheme, workspaceTheme, onAddSubP
       if (!targetId || targetId === id) return;
       try {
         const dragged = editor.getBlock(id);
-        if (!dragged) return;
-        // Omit id so BlockNote assigns a fresh one → no Yjs CRDT collision
+        const target = editor.getBlock(targetId);
+        if (!dragged || !target) return;
+
+        // Omit id so BlockNote assigns a fresh one
         const { id: _discard, ...content } = dragged as any;
-        editor.insertBlocks([content], { id: targetId }, placement);
-        editor.removeBlocks([{ id }]);
+
+        if (placement === 'before-column' || placement === 'after-column') {
+          const isLeft = placement === 'before-column';
+          
+          // Helper to strip IDs recursively for fresh block objects
+          const stripId = (b: any): any => {
+            const { id: _, children, ...rest } = b;
+            return {
+              ...rest,
+              props: rest.props || {},
+              content: rest.content || [],
+              children: children?.map(stripId) || []
+            };
+          };
+
+          const draggedContent = stripId(dragged);
+          const targetContent = stripId(target);
+
+          // Construct a column group with two columns
+          // BlockNote 0.47 requires props and content even for structural blocks
+          const columnGroupBlock = {
+            type: "columnGroup",
+            props: {},
+            content: [],
+            children: isLeft 
+              ? [
+                  { type: "column", props: {}, content: [], children: [draggedContent] },
+                  { type: "column", props: {}, content: [], children: [targetContent] }
+                ]
+              : [
+                  { type: "column", props: {}, content: [], children: [targetContent] },
+                  { type: "column", props: {}, content: [], children: [draggedContent] }
+                ]
+          };
+
+          editor.replaceBlocks([targetId], [columnGroupBlock as any]);
+          editor.removeBlocks([id]);
+        } else {
+          editor.insertBlocks([content], { id: targetId }, placement as 'before' | 'after');
+          editor.removeBlocks([id]);
+        }
       } catch (err) {
         console.error('Block move failed:', err);
       }
@@ -770,6 +849,18 @@ const CollaborativeEditor = ({ provider, currentTheme, workspaceTheme, onAddSubP
         group: "Apps",
         icon: <RiBarChart2Line size={18} />,
         subtext: "Create interactive visualizations (Bar, Line, Pie, Scatter, etc.)",
+      },
+      {
+        title: "Mermaid Diagram",
+        onItemClick: () => {
+          ed.updateBlock(ed.getTextCursorPosition().block, {
+            type: "mermaid",
+          });
+        },
+        aliases: ["mermaid", "diagram", "flowchart", "graph"],
+        group: "Apps",
+        icon: <Sparkles size={18} />,
+        subtext: "Insert a Mermaid diagram (Flowchart, Sequence, Gantt, etc.)",
       },
     ];
 

@@ -57,8 +57,9 @@ export function AppearanceTab({
   
   const [visualPositions, setVisualPositions] = useState<{ [key in keyof ThemeColors]: { x: number, y: number } }>(() => {
     const init: any = {};
-    (['bgPrimary', 'bgSecondary', 'accent', 'textPrimary'] as const).forEach(k => {
-      const hsl = hexToHsl(baseColors[k]);
+    (['bgPrimary', 'bgSecondary', 'accent', 'textPrimary', 'brandColor1', 'brandColor2'] as const).forEach(k => {
+      const color = baseColors[k] || '#ffffff';
+      const hsl = hexToHsl(color);
       const y = Math.max(0, Math.min(100, (80 - hsl.l) / 50 * 100));
       init[k] = { x: (hsl.h / 360) * 100, y };
     });
@@ -285,6 +286,28 @@ export function AppearanceTab({
             left={`calc(${visualPositions.textPrimary.x}% - 12px)`} 
             onClick={() => setSelectedField('textPrimary')} 
             onMouseDown={(e) => handleDragStart(e, 'textPrimary')}
+          />
+          <ThemeBubble 
+            color={editColors.brandColor1 || '#ffffff'} 
+            size={40} 
+            isDragging={draggingField === 'brandColor1'}
+            active={selectedField === 'brandColor1'} 
+            label="Brand 1" 
+            top={`${visualPositions.brandColor1?.y || 20}%`} 
+            left={`calc(${visualPositions.brandColor1?.x || 20}% - 20px)`} 
+            onClick={() => setSelectedField('brandColor1')} 
+            onMouseDown={(e) => handleDragStart(e, 'brandColor1')}
+          />
+          <ThemeBubble 
+            color={editColors.brandColor2 || '#ffffff'} 
+            size={40} 
+            isDragging={draggingField === 'brandColor2'}
+            active={selectedField === 'brandColor2'} 
+            label="Brand 2" 
+            top={`${visualPositions.brandColor2?.y || 20}%`} 
+            left={`calc(${visualPositions.brandColor2?.x || 80}% - 20px)`} 
+            onClick={() => setSelectedField('brandColor2')} 
+            onMouseDown={(e) => handleDragStart(e, 'brandColor2')}
           />
         </div>
 

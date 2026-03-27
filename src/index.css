@@ -19,3 +19,32 @@
   --border-color: #262626;
   --accent: #ffffff;
 }
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   BlockNote Multi-Column Layout (Side-by-Side)
+   ───────────────────────────────────────────────────────────────────────────── */
+.bn-column-group {
+  display: flex !important;
+  gap: 20px !important;
+  margin: 16px 0 !important;
+  align-items: stretch !important;
+}
+
+.bn-column {
+  flex: 1 !important;
+  min-width: 50px !important;
+  position: relative;
+}
+
+/* Add a subtle separator between columns if needed (optional) */
+/* .bn-column:not(:last-child)::after {
+  content: '';
+  position: absolute;
+  right: -10px;
+  top: 10%;
+  bottom: 10%;
+  width: 1px;
+  background: var(--border-color);
+  opacity: 0.3;
+} */
+
